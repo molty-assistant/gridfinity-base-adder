@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import FileUpload from './components/FileUpload';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
+import type { OrientationAxis } from './components/Controls';
 import { parseSTL, getModelDimensions, exportSTL, downloadSTL } from './lib/stl';
 import { initManifold } from './lib/manifold';
 import {
@@ -13,6 +14,7 @@ import {
   BASE_HEIGHT,
   GRID_UNIT,
 } from './lib/gridfinity';
+import type { FitMode } from './lib/gridfinity';
 
 interface ModelDims {
   width: number;
@@ -28,7 +30,34 @@ interface ModelDims {
   centerY: number;
 }
 
+/**
+ * Build a rotation matrix that brings the chosen face to become -Z (bottom).
+ * The default orientation is -Z facing down (no rotation needed).
+ */
+function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
+  const mat = new THREE.Matrix4();
+  switch (axis) {
+    case '-z': // default — no rotation
+      return mat;
+    case '+z': // flip upside down — rotate 180° around X
+      return mat.makeRotationX(Math.PI);
+    case '+x': // right face down — rotate -90° around Y
+      return mat.makeRotationY(-Math.PI / 2);
+    case '-x': // left face down — rotate +90° around Y
+      return mat.makeRotationY(Math.PI / 2);
+    case '+y': // back face down — rotate +90° around X
+      return mat.makeRotationX(Math.PI / 2);
+    case '-y': // front face down — rotate -90° around X
+      return mat.makeRotationX(-Math.PI / 2);
+    default:
+      return mat;
+  }
+}
+
 function App() {
+  // Raw uploaded geometry (before orientation)
+  const rawGeometryRef = useRef<THREE.BufferGeometry | null>(null);
+
   const [originalGeometry, setOriginalGeometry] =
     useState<THREE.BufferGeometry | null>(null);
   const [baseGeometry, setBaseGeometry] =
@@ -43,6 +72,8 @@ function App() {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [magnets, setMagnets] = useState(true);
+  const [fitMode, setFitMode] = useState<FitMode>('inside');
+  const [orientation, setOrientation] = useState<OrientationAxis>('-z');
   const [isProcessing, setIsProcessing] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,38 +94,72 @@ function App() {
       });
   }, []);
 
+  /**
+   * Apply orientation to raw geometry: rotate, center XY, place bottom at Z=0
+   */
+  const applyOrientation = useCallback((rawGeo: THREE.BufferGeometry, axis: OrientationAxis): {
+    geometry: THREE.BufferGeometry;
+    dims: ModelDims;
+  } => {
+    const geo = rawGeo.clone();
+
+    // Apply orientation rotation
+    const rotMatrix = getOrientationMatrix(axis);
+    geo.applyMatrix4(rotMatrix);
+    geo.computeBoundingBox();
+
+    const rawDims = getModelDimensions(geo);
+
+    // Center on XY and place bottom at Z=0
+    geo.translate(-rawDims.centerX, -rawDims.centerY, -rawDims.minZ);
+    geo.computeBoundingBox();
+
+    const dims = getModelDimensions(geo);
+
+    return {
+      geometry: geo,
+      dims: {
+        width: dims.width,
+        depth: dims.depth,
+        height: dims.height,
+        minX: dims.minX,
+        maxX: dims.maxX,
+        minY: dims.minY,
+        maxY: dims.maxY,
+        minZ: dims.minZ,
+        maxZ: dims.maxZ,
+        centerX: dims.centerX,
+        centerY: dims.centerY,
+      },
+    };
+  }, []);
+
+  /**
+   * Recalculate grid units based on current dimensions and fit mode
+   */
+  const recalcGrid = useCallback((dims: ModelDims, mode: FitMode) => {
+    if (mode === 'custom') return; // don't auto-change in custom mode
+    const units = calculateGridUnits(dims.width, dims.depth, mode);
+    setGridX(units.gridX);
+    setGridY(units.gridY);
+  }, []);
+
   // Handle STL file upload
   const handleFileLoaded = useCallback(
     (buffer: ArrayBuffer, name: string) => {
       setError(null);
       try {
-        const geometry = parseSTL(buffer);
-        const dims = getModelDimensions(geometry);
+        const rawGeo = parseSTL(buffer);
+        rawGeometryRef.current = rawGeo;
 
-        // Center the model on XY and place bottom at z=0
-        geometry.translate(-dims.centerX, -dims.centerY, -dims.minZ);
-        geometry.computeBoundingBox();
-
-        const updatedDims = getModelDimensions(geometry);
+        const { geometry, dims } = applyOrientation(rawGeo, orientation);
 
         setOriginalGeometry(geometry);
-        setModelDims({
-          width: updatedDims.width,
-          depth: updatedDims.depth,
-          height: updatedDims.height,
-          minX: updatedDims.minX,
-          maxX: updatedDims.maxX,
-          minY: updatedDims.minY,
-          maxY: updatedDims.maxY,
-          minZ: updatedDims.minZ,
-          maxZ: updatedDims.maxZ,
-          centerX: updatedDims.centerX,
-          centerY: updatedDims.centerY,
-        });
+        setModelDims(dims);
         setFilename(name);
 
         // Auto-calculate grid units
-        const units = calculateGridUnits(updatedDims.width, updatedDims.depth);
+        const units = calculateGridUnits(dims.width, dims.depth, fitMode);
         setGridX(units.gridX);
         setGridY(units.gridY);
 
@@ -109,8 +174,43 @@ function App() {
         setError(`Failed to parse STL file: ${err.message}`);
       }
     },
-    []
+    [applyOrientation, orientation, fitMode]
   );
+
+  // Handle orientation change
+  const handleOrientationChange = useCallback((axis: OrientationAxis) => {
+    if (!rawGeometryRef.current) return;
+
+    setOrientation(axis);
+    const { geometry, dims } = applyOrientation(rawGeometryRef.current, axis);
+
+    setOriginalGeometry(geometry);
+    setModelDims(dims);
+
+    // Recalculate grid for new orientation
+    const units = calculateGridUnits(dims.width, dims.depth, fitMode);
+    setGridX(units.gridX);
+    setGridY(units.gridY);
+
+    // Reset results
+    setBaseGeometry(null);
+    setCombinedGeometry(null);
+    combinedDataRef.current = null;
+    setOffsetX(0);
+    setOffsetY(0);
+  }, [applyOrientation, fitMode]);
+
+  // Handle fit mode change
+  const handleFitModeChange = useCallback((mode: FitMode) => {
+    setFitMode(mode);
+    if (modelDims) {
+      recalcGrid(modelDims, mode);
+    }
+    // Reset results
+    setBaseGeometry(null);
+    setCombinedGeometry(null);
+    combinedDataRef.current = null;
+  }, [modelDims, recalcGrid]);
 
   // Generate the base and union it with the model
   const handleGenerate = useCallback(async () => {
@@ -150,7 +250,7 @@ function App() {
       setBaseGeometry(baseGeo);
 
       // Now convert original model to Manifold
-      // We need to shift the model UP by the base height so the base sits underneath
+      // Shift the model UP by the base height so the base sits underneath
       const shiftedGeometry = originalGeometry.clone();
       shiftedGeometry.translate(0, 0, BASE_HEIGHT);
 
@@ -165,13 +265,9 @@ function App() {
           'Model is not manifold, trying to fix...',
           meshErr.message
         );
-        // Try to union the model with itself (sometimes helps)
-        // Or just use the base alone
         setError(
           'Warning: The uploaded model is not watertight/manifold. The base was generated but could not be merged. Try a different STL file.'
         );
-
-        // Show just the base
         setIsProcessing(false);
         baseManifold.delete();
         return;
@@ -252,18 +348,24 @@ function App() {
               originalGeometry={originalGeometry}
               baseGeometry={baseGeometry}
               combinedGeometry={combinedGeometry}
+              gridX={gridX}
+              gridY={gridY}
+              offsetX={offsetX}
+              offsetY={offsetY}
             />
           </div>
         </div>
 
         {/* Sidebar */}
-        <div className="w-full lg:w-72 p-4 lg:pl-0 border-t lg:border-t-0 lg:border-l border-gray-800">
+        <div className="w-full lg:w-80 p-4 lg:pl-0 border-t lg:border-t-0 lg:border-l border-gray-800 overflow-y-auto max-h-screen">
           <Controls
             gridX={gridX}
             gridY={gridY}
             offsetX={offsetX}
             offsetY={offsetY}
             magnets={magnets}
+            fitMode={fitMode}
+            orientation={orientation}
             modelDims={modelDims}
             hasModel={!!originalGeometry}
             hasBase={!!baseGeometry}
@@ -274,6 +376,8 @@ function App() {
             onOffsetXChange={setOffsetX}
             onOffsetYChange={setOffsetY}
             onMagnetsChange={setMagnets}
+            onFitModeChange={handleFitModeChange}
+            onOrientationChange={handleOrientationChange}
             onGenerate={handleGenerate}
             onDownload={handleDownload}
           />
