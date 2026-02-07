@@ -1,73 +1,52 @@
-# React + TypeScript + Vite
+# 🔲 Gridfinity Base Adder
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Add Gridfinity-compatible bases to any STL model — entirely in your browser.
 
-Currently, two official plugins are available:
+## What It Does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Upload any 3D model (STL), and this tool will:
+1. **Analyse** the model's footprint and calculate grid coverage
+2. **Generate** a proper Gridfinity base with the stepped interlock profile
+3. **Union** the base with your model using boolean CSG
+4. **Export** the combined result as a downloadable STL
 
-## React Compiler
+No CAD skills required. No server — everything runs client-side.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Why?
 
-## Expanding the ESLint configuration
+There are 10,000+ 3D models on Printables and Thingiverse that would be perfect for Gridfinity, but don't have compatible bases. This tool solves that with one click.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Gridfinity Base Spec
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+The generated base follows the Gridfinity specification:
+- **42mm × 42mm** grid units
+- Stepped/chamfered interlock profile (~4.75mm total height)
+- 0.25mm clearance from grid boundaries
+- Optional 6mm magnet holes at unit corners
+- Proper corner radii
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Tech Stack
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- **React + TypeScript** (Vite)
+- **Three.js** — 3D viewport with orbit controls
+- **Manifold 3D** (WASM) — boolean CSG operations
+- **Tailwind CSS** — styling
+
+## Development
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Building
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+Output goes to `dist/`.
+
+## License
+
+MIT

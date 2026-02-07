@@ -33,6 +33,11 @@ export const MAGNET_DIAMETER = 6.0; // mm
 export const MAGNET_DEPTH = 2.0; // mm
 export const MAGNET_OFFSET = 4.8; // mm from edge of unit to center of magnet
 
+// Fitting mode tolerance
+export const FIT_TOLERANCE = 2.0; // mm - if overhang ≤ this, round UP
+
+export type FitMode = 'inside' | 'outside' | 'custom';
+
 export interface GridfinityConfig {
   gridX: number; // number of grid units in X
   gridY: number; // number of grid units in Y
@@ -43,15 +48,39 @@ export interface GridfinityConfig {
 
 /**
  * Calculate how many grid units fit in the given dimensions
+ * with optional fit mode
  */
 export function calculateGridUnits(
   widthX: number,
-  widthY: number
+  widthY: number,
+  mode: FitMode = 'inside'
 ): { gridX: number; gridY: number } {
-  return {
-    gridX: Math.max(1, Math.floor(widthX / GRID_UNIT)),
-    gridY: Math.max(1, Math.floor(widthY / GRID_UNIT)),
-  };
+  if (mode === 'outside') {
+    return {
+      gridX: Math.max(1, Math.ceil(widthX / GRID_UNIT)),
+      gridY: Math.max(1, Math.ceil(widthY / GRID_UNIT)),
+    };
+  }
+
+  // "inside" mode with tolerance
+  const rawX = widthX / GRID_UNIT;
+  const rawY = widthY / GRID_UNIT;
+
+  // If overhang per side is small enough, round up
+  const floorX = Math.floor(rawX);
+  const floorY = Math.floor(rawY);
+  const overhangX = (rawX - floorX) * GRID_UNIT / 2; // per side
+  const overhangY = (rawY - floorY) * GRID_UNIT / 2;
+
+  const gridX = overhangX > 0 && overhangX <= FIT_TOLERANCE ? floorX + 1 : Math.max(1, floorX);
+  const gridY = overhangY > 0 && overhangY <= FIT_TOLERANCE ? floorY + 1 : Math.max(1, floorY);
+
+  // If zero units fit inside, auto-suggest outside
+  if (gridX === 0 || gridY === 0) {
+    return calculateGridUnits(widthX, widthY, 'outside');
+  }
+
+  return { gridX, gridY };
 }
 
 /**
@@ -118,13 +147,6 @@ export async function generateGridfinityBase(
         config.offsetY + (gy - (config.gridY - 1) / 2) * GRID_UNIT;
 
       // Build the stepped profile for one unit base
-      // Layer 1: Bottom chamfer - starts small, grows to full size
-      // The bottom is at z=0
-
-      // The Gridfinity base profile creates a MALE connector that fits into the
-      // FEMALE baseplate slots. The base widens from bottom to top:
-      // - Tip at bottom (narrower)
-      // - Lip at top (full grid unit width)
       const w0 = BASE_UNIT - 2 * (CHAMFER_SMALL + CHAMFER_LARGE); // bottom tip
       const w1 = BASE_UNIT - 2 * CHAMFER_LARGE; // after small chamfer
       const w3 = BASE_UNIT; // after large chamfer (full width at top)
@@ -134,17 +156,6 @@ export async function generateGridfinityBase(
       const z2 = z1 + WALL_HEIGHT; // 2.6mm
       const z3 = z2 + CHAMFER_LARGE; // 4.75mm
 
-      // Build using hull of cylinders at different heights for the chamfer effect
-      // Or build using stacked cross-sections
-
-      // Approach: Create the base profile as a series of extruded cross-sections
-      // and union them together. But simpler: use a single rounded rect and
-      // vary the size with the extrude scaleTop parameter.
-
-      // Actually, the cleanest approach: build each profile section separately
-      // and union them.
-
-      // Section 1: Bottom chamfer (truncated pyramid from w0 to w1)
       const cr0 = Math.max(0.5, CORNER_RADIUS - (w3 - w0) / 2);
       const cr1 = Math.max(0.5, CORNER_RADIUS - (w3 - w1) / 2);
 
@@ -158,7 +169,6 @@ export async function generateGridfinityBase(
         [w1 / w0, w1 / w0] as any
       );
 
-      // Section 2: Vertical wall (constant width cylinder from w1)
       const cs1 = new CrossSection(
         [roundedRectPoints(w1, w1, cr1)] as any
       );
@@ -166,7 +176,6 @@ export async function generateGridfinityBase(
         .extrude(z2 - z1)
         .translate([0, 0, z1] as any);
 
-      // Section 3: Top chamfer (truncated pyramid from w2 to w3)
       const section3 = cs1
         .extrude(z3 - z2, 0, 0, [w3 / w1, w3 / w1] as any)
         .translate([0, 0, z2] as any);
@@ -184,9 +193,8 @@ export async function generateGridfinityBase(
       if (config.magnets) {
         const magnetHoles: any[] = [];
         const magnetRadius = MAGNET_DIAMETER / 2;
-        const inset = MAGNET_OFFSET; // from unit edge
+        const inset = MAGNET_OFFSET;
 
-        // 4 corners of this grid unit
         const corners = [
           [centerX - GRID_UNIT / 2 + inset, centerY - GRID_UNIT / 2 + inset],
           [centerX + GRID_UNIT / 2 - inset, centerY - GRID_UNIT / 2 + inset],
@@ -206,7 +214,6 @@ export async function generateGridfinityBase(
 
         unitBase = Manifold.difference([unitBase, ...magnetHoles]);
 
-        // Clean up magnet holes
         for (const h of magnetHoles) {
           h.delete();
         }
@@ -214,20 +221,17 @@ export async function generateGridfinityBase(
 
       unitBases.push(unitBase);
 
-      // Clean up sections
       section1.delete();
       section2.delete();
       section3.delete();
     }
   }
 
-  // Union all unit bases together
   const fullBase =
     unitBases.length === 1
       ? unitBases[0]
       : Manifold.union(unitBases);
 
-  // Clean up individual bases if we unioned
   if (unitBases.length > 1) {
     for (const ub of unitBases) {
       ub.delete();
@@ -246,7 +250,6 @@ export function geometryToManifoldMesh(
 ): any {
   const { Mesh } = wasm;
 
-  // Ensure we have a non-indexed geometry for simplicity, or handle indexed
   const posAttr = geometry.getAttribute('position');
   const index = geometry.getIndex();
 
@@ -254,13 +257,11 @@ export function geometryToManifoldMesh(
   let triVerts: Uint32Array;
 
   if (index) {
-    // Indexed geometry - use vertices directly
     const positions = posAttr.array as Float32Array;
     vertProperties = new Float32Array(positions.length);
     vertProperties.set(positions);
     triVerts = new Uint32Array(index.array);
   } else {
-    // Non-indexed - every 3 verts is a triangle
     const positions = posAttr.array as Float32Array;
     const numVerts = posAttr.count;
     vertProperties = new Float32Array(positions.length);
@@ -277,7 +278,6 @@ export function geometryToManifoldMesh(
     triVerts,
   });
 
-  // Try to merge coincident vertices to make it manifold
   mesh.merge();
 
   return mesh;
@@ -294,7 +294,6 @@ export function manifoldMeshToArrays(mesh: any): {
   const triVerts = mesh.triVerts;
   const numProp = mesh.numProp;
 
-  // Extract just the xyz positions
   const numVerts = vertProperties.length / numProp;
   const positions = new Float32Array(numVerts * 3);
   for (let i = 0; i < numVerts; i++) {
