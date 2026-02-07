@@ -125,18 +125,71 @@ function roundedRectPoints(
 }
 
 /**
- * Generate the base mesh for a single grid unit using Manifold primitives.
- * Uses the stepped profile approach - builds the base as layered extrusions.
+ * Generate one unit base at the origin using the hull approach.
+ * Hulls thin slabs at different Z heights to create clean chamfer geometry.
+ */
+function generateUnitBase(wasm: any): any {
+  const { Manifold, CrossSection } = wasm;
+
+  // Profile widths at each Z level (base widens from bottom to top)
+  const w_bottom = BASE_UNIT - 2 * (CHAMFER_SMALL + CHAMFER_LARGE); // ~35.6mm
+  const w_mid = BASE_UNIT - 2 * CHAMFER_LARGE; // ~37.2mm
+  const w_top = BASE_UNIT; // 41.5mm
+
+  // Proportional corner radii
+  const r_bottom = Math.max(0.5, CORNER_RADIUS * (w_bottom / BASE_UNIT));
+  const r_mid = Math.max(0.5, CORNER_RADIUS * (w_mid / BASE_UNIT));
+  const r_top = CORNER_RADIUS;
+
+  // Z heights
+  const z1 = CHAMFER_SMALL;               // 0.8mm
+  const z2 = CHAMFER_SMALL + WALL_HEIGHT;  // 2.6mm
+  const z3 = BASE_HEIGHT;                  // 4.75mm
+
+  const SLAB = 0.01; // thin slab for hull endpoints
+
+  // Create cross-sections at each profile level
+  const csBottom = new CrossSection([roundedRectPoints(w_bottom, w_bottom, r_bottom)] as any);
+  const csMid = new CrossSection([roundedRectPoints(w_mid, w_mid, r_mid)] as any);
+  const csTop = new CrossSection([roundedRectPoints(w_top, w_top, r_top)] as any);
+
+  // Thin slabs at each Z level
+  const slabBottom = csBottom.extrude(SLAB);
+  const slabZ1 = csMid.extrude(SLAB).translate([0, 0, z1] as any);
+  const slabZ2 = csMid.extrude(SLAB).translate([0, 0, z2] as any);
+  const slabZ3 = csTop.extrude(SLAB).translate([0, 0, z3] as any);
+
+  // Section 1: Small chamfer (hull bottom → z1)
+  const section1 = Manifold.hull([slabBottom, slabZ1]);
+  // Section 2: Vertical wall (constant-width extrusion z1 → z2)
+  const section2 = csMid.extrude(z2 - z1).translate([0, 0, z1] as any);
+  // Section 3: Large chamfer (hull z2 → z3)
+  const section3 = Manifold.hull([slabZ2, slabZ3]);
+
+  // Clean up intermediates
+  csBottom.delete(); csMid.delete(); csTop.delete();
+  slabBottom.delete(); slabZ1.delete(); slabZ2.delete(); slabZ3.delete();
+
+  const unitBase = Manifold.union([section1, section2, section3]);
+  section1.delete(); section2.delete(); section3.delete();
+
+  return unitBase;
+}
+
+/**
+ * Generate the complete Gridfinity base mesh for the given grid configuration.
+ * Creates one template unit base, then translates and unions copies for each cell.
  */
 export async function generateGridfinityBase(
   wasm: any,
   config: GridfinityConfig
 ): Promise<any> {
-  const { Manifold, CrossSection } = wasm;
+  const { Manifold } = wasm;
 
-  // Set circular segments for quality
   wasm.setCircularSegments(32);
 
+  // Build one template base at origin
+  const templateBase = generateUnitBase(wasm);
   const unitBases: any[] = [];
 
   for (let gx = 0; gx < config.gridX; gx++) {
@@ -146,48 +199,7 @@ export async function generateGridfinityBase(
       const centerY =
         config.offsetY + (gy - (config.gridY - 1) / 2) * GRID_UNIT;
 
-      // Build the stepped profile for one unit base
-      const w0 = BASE_UNIT - 2 * (CHAMFER_SMALL + CHAMFER_LARGE); // bottom tip
-      const w1 = BASE_UNIT - 2 * CHAMFER_LARGE; // after small chamfer
-      const w3 = BASE_UNIT; // after large chamfer (full width at top)
-
-      const z0 = 0;
-      const z1 = CHAMFER_SMALL; // 0.8mm
-      const z2 = z1 + WALL_HEIGHT; // 2.6mm
-      const z3 = z2 + CHAMFER_LARGE; // 4.75mm
-
-      const cr0 = Math.max(0.5, CORNER_RADIUS - (w3 - w0) / 2);
-      const cr1 = Math.max(0.5, CORNER_RADIUS - (w3 - w1) / 2);
-
-      const cs0 = new CrossSection(
-        [roundedRectPoints(w0, w0, cr0)] as any
-      );
-      const section1 = cs0.extrude(
-        z1 - z0,
-        0,
-        0,
-        [w1 / w0, w1 / w0] as any
-      );
-
-      const cs1 = new CrossSection(
-        [roundedRectPoints(w1, w1, cr1)] as any
-      );
-      const section2 = cs1
-        .extrude(z2 - z1)
-        .translate([0, 0, z1] as any);
-
-      const section3 = cs1
-        .extrude(z3 - z2, 0, 0, [w3 / w1, w3 / w1] as any)
-        .translate([0, 0, z2] as any);
-
-      cs0.delete();
-      cs1.delete();
-
-      // Union all sections
-      let unitBase = Manifold.union([section1, section2, section3]);
-
-      // Translate to grid position
-      unitBase = unitBase.translate([centerX, centerY, 0] as any);
+      let unitBase = templateBase.translate([centerX, centerY, 0] as any);
 
       // Add magnet holes if requested
       if (config.magnets) {
@@ -207,12 +219,14 @@ export async function generateGridfinityBase(
             MAGNET_DEPTH,
             magnetRadius,
             magnetRadius,
-            32
+            24
           ).translate([mx, my, 0] as any);
           magnetHoles.push(hole);
         }
 
-        unitBase = Manifold.difference([unitBase, ...magnetHoles]);
+        const withHoles = Manifold.difference([unitBase, ...magnetHoles]);
+        unitBase.delete();
+        unitBase = withHoles;
 
         for (const h of magnetHoles) {
           h.delete();
@@ -220,22 +234,18 @@ export async function generateGridfinityBase(
       }
 
       unitBases.push(unitBase);
-
-      section1.delete();
-      section2.delete();
-      section3.delete();
     }
   }
 
-  const fullBase =
-    unitBases.length === 1
-      ? unitBases[0]
-      : Manifold.union(unitBases);
+  templateBase.delete();
 
-  if (unitBases.length > 1) {
-    for (const ub of unitBases) {
-      ub.delete();
-    }
+  if (unitBases.length === 1) {
+    return unitBases[0];
+  }
+
+  const fullBase = Manifold.union(unitBases);
+  for (const ub of unitBases) {
+    ub.delete();
   }
 
   return fullBase;
