@@ -1,17 +1,26 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GRID_UNIT } from '../lib/gridfinity';
 
 interface ViewportProps {
   originalGeometry: THREE.BufferGeometry | null;
   baseGeometry: THREE.BufferGeometry | null;
   combinedGeometry: THREE.BufferGeometry | null;
+  gridX: number;
+  gridY: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 export default function Viewport({
   originalGeometry,
   baseGeometry,
   combinedGeometry,
+  gridX,
+  gridY,
+  offsetX,
+  offsetY,
 }: ViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{
@@ -22,7 +31,8 @@ export default function Viewport({
     originalMesh: THREE.Mesh | null;
     baseMesh: THREE.Mesh | null;
     combinedMesh: THREE.Mesh | null;
-    gridHelper: THREE.GridHelper | null;
+    gridOverlay: THREE.Group | null;
+    bgGrid: THREE.GridHelper | null;
     animId: number;
   } | null>(null);
 
@@ -69,10 +79,10 @@ export default function Viewport({
     dirLight2.position.set(-100, -50, -100);
     scene.add(dirLight2);
 
-    // Grid helper
-    const gridHelper = new THREE.GridHelper(200, 20, 0x333333, 0x222222);
-    gridHelper.rotation.x = Math.PI / 2; // rotate to XY plane
-    scene.add(gridHelper);
+    // Background grid helper
+    const bgGrid = new THREE.GridHelper(200, 20, 0x333333, 0x222222);
+    bgGrid.rotation.x = Math.PI / 2; // rotate to XY plane
+    scene.add(bgGrid);
 
     const state = {
       renderer,
@@ -82,7 +92,8 @@ export default function Viewport({
       originalMesh: null as THREE.Mesh | null,
       baseMesh: null as THREE.Mesh | null,
       combinedMesh: null as THREE.Mesh | null,
-      gridHelper,
+      gridOverlay: null as THREE.Group | null,
+      bgGrid,
       animId: 0,
     };
     sceneRef.current = state;
@@ -144,10 +155,10 @@ export default function Viewport({
     state.camera.lookAt(center);
     state.controls.update();
 
-    // Update grid
-    if (state.gridHelper) {
-      state.scene.remove(state.gridHelper);
-      state.gridHelper.dispose();
+    // Update background grid
+    if (state.bgGrid) {
+      state.scene.remove(state.bgGrid);
+      state.bgGrid.dispose();
     }
     const gridSize = Math.ceil(maxDim * 2 / 42) * 42;
     const gridDivisions = Math.ceil(gridSize / 42);
@@ -160,8 +171,111 @@ export default function Viewport({
     newGrid.rotation.x = Math.PI / 2;
     newGrid.position.set(center.x, center.y, 0);
     state.scene.add(newGrid);
-    state.gridHelper = newGrid;
+    state.bgGrid = newGrid;
   }, []);
+
+  // Build grid overlay showing active cells
+  const buildGridOverlay = useCallback((gx: number, gy: number, ox: number, oy: number): THREE.Group => {
+    const group = new THREE.Group();
+
+    // Draw active cells as filled translucent quads
+    for (let ix = 0; ix < gx; ix++) {
+      for (let iy = 0; iy < gy; iy++) {
+        const cx = ox + (ix - (gx - 1) / 2) * GRID_UNIT;
+        const cy = oy + (iy - (gy - 1) / 2) * GRID_UNIT;
+
+        // Filled cell
+        const cellGeom = new THREE.PlaneGeometry(GRID_UNIT - 1, GRID_UNIT - 1);
+        const cellMat = new THREE.MeshBasicMaterial({
+          color: 0x22cc66,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const cellMesh = new THREE.Mesh(cellGeom, cellMat);
+        cellMesh.position.set(cx, cy, 0.05);
+        group.add(cellMesh);
+
+        // Cell border
+        const borderPoints = [
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
+          new THREE.Vector3(cx + GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
+          new THREE.Vector3(cx + GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.1),
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.1),
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
+        ];
+        const borderGeom = new THREE.BufferGeometry().setFromPoints(borderPoints);
+        const borderMat = new THREE.LineBasicMaterial({
+          color: 0x22cc66,
+          transparent: true,
+          opacity: 0.5,
+        });
+        const borderLine = new THREE.Line(borderGeom, borderMat);
+        group.add(borderLine);
+      }
+    }
+
+    // Add a few extra "inactive" cells around the edges for context
+    const extraRange = 1;
+    for (let ix = -extraRange; ix < gx + extraRange; ix++) {
+      for (let iy = -extraRange; iy < gy + extraRange; iy++) {
+        // Skip active cells
+        if (ix >= 0 && ix < gx && iy >= 0 && iy < gy) continue;
+
+        const cx = ox + (ix - (gx - 1) / 2) * GRID_UNIT;
+        const cy = oy + (iy - (gy - 1) / 2) * GRID_UNIT;
+
+        const borderPoints = [
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
+          new THREE.Vector3(cx + GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
+          new THREE.Vector3(cx + GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.05),
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.05),
+          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
+        ];
+        const borderGeom = new THREE.BufferGeometry().setFromPoints(borderPoints);
+        const borderMat = new THREE.LineDashedMaterial({
+          color: 0x888888,
+          transparent: true,
+          opacity: 0.2,
+          dashSize: 3,
+          gapSize: 3,
+        });
+        const borderLine = new THREE.Line(borderGeom, borderMat);
+        borderLine.computeLineDistances();
+        group.add(borderLine);
+      }
+    }
+
+    return group;
+  }, []);
+
+  // Update grid overlay when params change
+  useEffect(() => {
+    const state = sceneRef.current;
+    if (!state) return;
+
+    // Remove old overlay
+    if (state.gridOverlay) {
+      state.scene.remove(state.gridOverlay);
+      state.gridOverlay.traverse((child) => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+          child.geometry.dispose();
+          if (child.material instanceof THREE.Material) {
+            child.material.dispose();
+          }
+        }
+      });
+      state.gridOverlay = null;
+    }
+
+    // Only show grid overlay if we have a model loaded
+    if (!originalGeometry && !combinedGeometry) return;
+
+    const overlay = buildGridOverlay(gridX, gridY, offsetX, offsetY);
+    state.scene.add(overlay);
+    state.gridOverlay = overlay;
+  }, [gridX, gridY, offsetX, offsetY, originalGeometry, combinedGeometry, buildGridOverlay]);
 
   // Update meshes when geometries change
   useEffect(() => {

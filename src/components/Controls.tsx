@@ -1,9 +1,15 @@
+import type { FitMode } from '../lib/gridfinity';
+
+export type OrientationAxis = '+z' | '-z' | '+x' | '-x' | '+y' | '-y';
+
 interface ControlsProps {
   gridX: number;
   gridY: number;
   offsetX: number;
   offsetY: number;
   magnets: boolean;
+  fitMode: FitMode;
+  orientation: OrientationAxis;
   modelDims: { width: number; depth: number; height: number } | null;
   hasModel: boolean;
   hasBase: boolean;
@@ -14,9 +20,26 @@ interface ControlsProps {
   onOffsetXChange: (v: number) => void;
   onOffsetYChange: (v: number) => void;
   onMagnetsChange: (v: boolean) => void;
+  onFitModeChange: (v: FitMode) => void;
+  onOrientationChange: (v: OrientationAxis) => void;
   onGenerate: () => void;
   onDownload: () => void;
 }
+
+const fitModeLabels: Record<FitMode, { label: string; desc: string }> = {
+  inside: { label: 'Fit Inside', desc: 'Max grid units within model footprint' },
+  outside: { label: 'Fit Outside', desc: 'Grid units encompass entire model' },
+  custom: { label: 'Custom', desc: 'Manual grid count' },
+};
+
+const orientationButtons: { axis: OrientationAxis; label: string; title: string }[] = [
+  { axis: '-z', label: '⊥', title: 'Bottom (-Z) — default' },
+  { axis: '+z', label: '⊤', title: 'Top (+Z)' },
+  { axis: '-x', label: '◀', title: 'Left (-X)' },
+  { axis: '+x', label: '▶', title: 'Right (+X)' },
+  { axis: '-y', label: '▼', title: 'Front (-Y)' },
+  { axis: '+y', label: '▲', title: 'Back (+Y)' },
+];
 
 export default function Controls({
   gridX,
@@ -24,9 +47,10 @@ export default function Controls({
   offsetX,
   offsetY,
   magnets,
+  fitMode,
+  orientation,
   modelDims,
   hasModel,
-  hasBase,
   hasCombined,
   isProcessing,
   onGridXChange,
@@ -34,6 +58,8 @@ export default function Controls({
   onOffsetXChange,
   onOffsetYChange,
   onMagnetsChange,
+  onFitModeChange,
+  onOrientationChange,
   onGenerate,
   onDownload,
 }: ControlsProps) {
@@ -43,6 +69,7 @@ export default function Controls({
         Controls
       </h2>
 
+      {/* Model Dimensions */}
       {modelDims && (
         <div className="bg-gray-900/50 rounded-lg p-3 text-xs text-gray-400 space-y-1">
           <div className="font-medium text-gray-300 mb-1">Model Size</div>
@@ -52,6 +79,68 @@ export default function Controls({
         </div>
       )}
 
+      {/* Orientation Override */}
+      {hasModel && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-2">
+            Bottom Face
+          </label>
+          <div className="grid grid-cols-3 gap-1">
+            {orientationButtons.map((btn) => (
+              <button
+                key={btn.axis}
+                title={btn.title}
+                onClick={() => onOrientationChange(btn.axis)}
+                disabled={isProcessing}
+                className={`
+                  py-1.5 px-2 rounded text-sm font-medium transition-all
+                  ${orientation === btn.axis
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-600 mt-1">
+            Rotate model so a different face becomes the bottom
+          </p>
+        </div>
+      )}
+
+      {/* Fitting Mode */}
+      {hasModel && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-2">
+            Fitting Mode
+          </label>
+          <div className="flex flex-col gap-1">
+            {(Object.keys(fitModeLabels) as FitMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => onFitModeChange(mode)}
+                disabled={isProcessing}
+                className={`
+                  text-left px-3 py-2 rounded-lg text-xs transition-all
+                  ${fitMode === mode
+                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-300'
+                    : 'bg-gray-800/50 border border-gray-700/50 text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                <div className="font-medium">{fitModeLabels[mode].label}</div>
+                <div className="text-[10px] opacity-70 mt-0.5">{fitModeLabels[mode].desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Grid Units */}
       <div className="space-y-3">
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">
@@ -63,7 +152,7 @@ export default function Controls({
             max={20}
             value={gridX}
             onChange={(e) => onGridXChange(Math.max(1, parseInt(e.target.value) || 1))}
-            disabled={!hasModel || isProcessing}
+            disabled={!hasModel || isProcessing || (fitMode !== 'custom')}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
               text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
               disabled:opacity-50 disabled:cursor-not-allowed"
@@ -80,7 +169,7 @@ export default function Controls({
             max={20}
             value={gridY}
             onChange={(e) => onGridYChange(Math.max(1, parseInt(e.target.value) || 1))}
-            disabled={!hasModel || isProcessing}
+            disabled={!hasModel || isProcessing || (fitMode !== 'custom')}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
               text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
               disabled:opacity-50 disabled:cursor-not-allowed"
@@ -91,35 +180,38 @@ export default function Controls({
           Base size: {(gridX * 42).toFixed(0)} × {(gridY * 42).toFixed(0)} mm
         </div>
 
+        {/* Offset Sliders */}
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">
-            Offset X (mm)
+            Offset X: {offsetX.toFixed(1)} mm
           </label>
           <input
-            type="number"
+            type="range"
+            min={-21}
+            max={21}
             step={0.5}
             value={offsetX}
-            onChange={(e) => onOffsetXChange(parseFloat(e.target.value) || 0)}
+            onChange={(e) => onOffsetXChange(parseFloat(e.target.value))}
             disabled={!hasModel || isProcessing}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
-              text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-              disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer
+              accent-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
 
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">
-            Offset Y (mm)
+            Offset Y: {offsetY.toFixed(1)} mm
           </label>
           <input
-            type="number"
+            type="range"
+            min={-21}
+            max={21}
             step={0.5}
             value={offsetY}
-            onChange={(e) => onOffsetYChange(parseFloat(e.target.value) || 0)}
+            onChange={(e) => onOffsetYChange(parseFloat(e.target.value))}
             disabled={!hasModel || isProcessing}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
-              text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-              disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer
+              accent-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
 
@@ -140,6 +232,7 @@ export default function Controls({
         </div>
       </div>
 
+      {/* Action Buttons */}
       <div className="flex flex-col gap-2 pt-2">
         <button
           onClick={onGenerate}
@@ -197,9 +290,9 @@ export default function Controls({
         </button>
       </div>
 
-      {hasBase && !hasCombined && (
+      {!hasCombined && hasModel && (
         <p className="text-xs text-yellow-400/70">
-          Base preview shown in green. Click Generate to create the combined mesh.
+          Adjust settings then click Generate to create the combined mesh.
         </p>
       )}
     </div>
