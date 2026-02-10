@@ -227,7 +227,7 @@ export default function Controls({
               disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <label htmlFor="magnets" className="text-sm text-gray-300">
-            Magnet holes (6mm)
+            Magnet holes (6.5mm)
           </label>
         </div>
       </div>

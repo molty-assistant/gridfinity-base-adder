@@ -149,6 +149,12 @@ function App() {
     (buffer: ArrayBuffer, name: string) => {
       setError(null);
       try {
+        // Dispose old geometries to prevent memory leaks
+        if (rawGeometryRef.current) rawGeometryRef.current.dispose();
+        originalGeometry?.dispose();
+        baseGeometry?.dispose();
+        combinedGeometry?.dispose();
+
         const rawGeo = parseSTL(buffer);
         rawGeometryRef.current = rawGeo;
 
@@ -174,12 +180,17 @@ function App() {
         setError(`Failed to parse STL file: ${err.message}`);
       }
     },
-    [applyOrientation, orientation, fitMode]
+    [applyOrientation, orientation, fitMode, originalGeometry, baseGeometry, combinedGeometry]
   );
 
   // Handle orientation change
   const handleOrientationChange = useCallback((axis: OrientationAxis) => {
     if (!rawGeometryRef.current) return;
+
+    // Dispose old geometries to prevent memory leaks
+    originalGeometry?.dispose();
+    baseGeometry?.dispose();
+    combinedGeometry?.dispose();
 
     setOrientation(axis);
     const { geometry, dims } = applyOrientation(rawGeometryRef.current, axis);
@@ -198,7 +209,7 @@ function App() {
     combinedDataRef.current = null;
     setOffsetX(0);
     setOffsetY(0);
-  }, [applyOrientation, fitMode]);
+  }, [applyOrientation, fitMode, originalGeometry, baseGeometry, combinedGeometry]);
 
   // Handle fit mode change
   const handleFitModeChange = useCallback((mode: FitMode) => {
@@ -239,6 +250,7 @@ function App() {
       // Convert base to Three.js geometry for preview
       const baseMesh = baseManifold.getMesh();
       const baseArrays = manifoldMeshToArrays(baseMesh);
+      baseMesh.delete();
 
       const baseGeo = new THREE.BufferGeometry();
       baseGeo.setAttribute(
@@ -265,13 +277,15 @@ function App() {
           'Model is not manifold, trying to fix...',
           meshErr.message
         );
+        modelMesh.delete();
         setError(
-          'Warning: The uploaded model is not watertight/manifold. The base was generated but could not be merged. Try a different STL file.'
+          'The uploaded model has mesh errors (non-manifold geometry). Try repairing it with Microsoft 3D Builder (free, Windows) or Meshmixer (free) before uploading. Most STL repair tools can fix this automatically.'
         );
         setIsProcessing(false);
         baseManifold.delete();
         return;
       }
+      modelMesh.delete();
 
       // Boolean union
       const combined = modelManifold.add(baseManifold);
@@ -279,6 +293,7 @@ function App() {
       // Get result mesh
       const resultMesh = combined.getMesh();
       const resultArrays = manifoldMeshToArrays(resultMesh);
+      resultMesh.delete();
 
       // Create Three.js geometry
       const combinedGeo = new THREE.BufferGeometry();

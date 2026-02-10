@@ -23,14 +23,16 @@ export const BASE_UNIT = GRID_UNIT - 2 * CLEARANCE; // actual base size per unit
 export const CHAMFER_SMALL = 0.8; // mm - bottom chamfer
 export const WALL_HEIGHT = 1.8; // mm - vertical wall section
 export const CHAMFER_LARGE = 2.15; // mm - top chamfer
-export const BASE_HEIGHT = CHAMFER_SMALL + WALL_HEIGHT + CHAMFER_LARGE; // ~4.75mm
+export const PROFILE_HEIGHT = CHAMFER_SMALL + WALL_HEIGHT + CHAMFER_LARGE; // 4.75mm - stacking profile only
+export const BRIDGE_HEIGHT = 2.25; // mm - solid platform on top of profile
+export const BASE_HEIGHT = PROFILE_HEIGHT + BRIDGE_HEIGHT; // 7.0mm - total base height
 
 // Corner radius for the base
 export const CORNER_RADIUS = 3.75; // mm - exterior corner radius
 
 // Magnet hole dimensions
-export const MAGNET_DIAMETER = 6.0; // mm
-export const MAGNET_DEPTH = 2.0; // mm
+export const MAGNET_DIAMETER = 6.5; // mm
+export const MAGNET_DEPTH = 2.4; // mm
 export const MAGNET_OFFSET = 4.8; // mm from edge of unit to center of magnet
 
 // Fitting mode tolerance
@@ -74,11 +76,6 @@ export function calculateGridUnits(
 
   const gridX = overhangX > 0 && overhangX <= FIT_TOLERANCE ? floorX + 1 : Math.max(1, floorX);
   const gridY = overhangY > 0 && overhangY <= FIT_TOLERANCE ? floorY + 1 : Math.max(1, floorY);
-
-  // If zero units fit inside, auto-suggest outside
-  if (gridX === 0 || gridY === 0) {
-    return calculateGridUnits(widthX, widthY, 'outside');
-  }
 
   return { gridX, gridY };
 }
@@ -136,15 +133,17 @@ function generateUnitBase(wasm: any): any {
   const w_mid = BASE_UNIT - 2 * CHAMFER_LARGE; // ~37.2mm
   const w_top = BASE_UNIT; // 41.5mm
 
-  // Proportional corner radii
-  const r_bottom = Math.max(0.5, CORNER_RADIUS * (w_bottom / BASE_UNIT));
-  const r_mid = Math.max(0.5, CORNER_RADIUS * (w_mid / BASE_UNIT));
+  // Absolute offset corner radii (inset from outer radius)
+  const totalInset_bottom = CHAMFER_SMALL + CHAMFER_LARGE; // 2.95mm
+  const totalInset_mid = CHAMFER_LARGE; // 2.15mm
+  const r_bottom = Math.max(0.1, CORNER_RADIUS - totalInset_bottom); // 3.75 - 2.95 = 0.8mm
+  const r_mid = Math.max(0.1, CORNER_RADIUS - totalInset_mid); // 3.75 - 2.15 = 1.6mm
   const r_top = CORNER_RADIUS;
 
   // Z heights
   const z1 = CHAMFER_SMALL;               // 0.8mm
   const z2 = CHAMFER_SMALL + WALL_HEIGHT;  // 2.6mm
-  const z3 = BASE_HEIGHT;                  // 4.75mm
+  const z3 = PROFILE_HEIGHT;                // 4.75mm
 
   const SLAB = 0.01; // thin slab for hull endpoints
 
@@ -239,14 +238,31 @@ export async function generateGridfinityBase(
 
   templateBase.delete();
 
+  let profileUnion: any;
   if (unitBases.length === 1) {
-    return unitBases[0];
+    profileUnion = unitBases[0];
+  } else {
+    profileUnion = Manifold.union(unitBases);
+    for (const ub of unitBases) {
+      ub.delete();
+    }
   }
 
-  const fullBase = Manifold.union(unitBases);
-  for (const ub of unitBases) {
-    ub.delete();
-  }
+  // Generate the bridge platform that spans the full multi-unit footprint
+  const bridgeWidth = config.gridX * GRID_UNIT - 2 * CLEARANCE;
+  const bridgeDepth = config.gridY * GRID_UNIT - 2 * CLEARANCE;
+  const { CrossSection } = wasm;
+  const bridgeCS = new CrossSection(
+    [roundedRectPoints(bridgeWidth, bridgeDepth, CORNER_RADIUS)] as any
+  );
+  const bridgeSlab = bridgeCS.extrude(BRIDGE_HEIGHT).translate(
+    [config.offsetX, config.offsetY, PROFILE_HEIGHT] as any
+  );
+  bridgeCS.delete();
+
+  const fullBase = Manifold.union([profileUnion, bridgeSlab]);
+  profileUnion.delete();
+  bridgeSlab.delete();
 
   return fullBase;
 }
@@ -274,6 +290,9 @@ export function geometryToManifoldMesh(
   } else {
     const positions = posAttr.array as Float32Array;
     const numVerts = posAttr.count;
+    if (numVerts % 3 !== 0) {
+      throw new Error('Invalid geometry: vertex count is not divisible by 3');
+    }
     vertProperties = new Float32Array(positions.length);
     vertProperties.set(positions);
     triVerts = new Uint32Array(numVerts);
