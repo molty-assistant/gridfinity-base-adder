@@ -72,6 +72,7 @@ function App() {
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [magnets, setMagnets] = useState(true);
+  const [screws, setScrews] = useState(false);
   const [fitMode, setFitMode] = useState<FitMode>('inside');
   const [orientation, setOrientation] = useState<OrientationAxis>('-z');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -243,6 +244,7 @@ function App() {
         offsetX,
         offsetY,
         magnets,
+        screws,
       };
 
       const baseManifold = await generateGridfinityBase(wasm, config);
@@ -319,7 +321,7 @@ function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets]);
+  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws]);
 
   // Download the combined STL
   const handleDownload = useCallback(() => {
@@ -379,6 +381,7 @@ function App() {
             offsetX={offsetX}
             offsetY={offsetY}
             magnets={magnets}
+            screws={screws}
             fitMode={fitMode}
             orientation={orientation}
             modelDims={modelDims}
@@ -391,6 +394,7 @@ function App() {
             onOffsetXChange={setOffsetX}
             onOffsetYChange={setOffsetY}
             onMagnetsChange={setMagnets}
+            onScrewsChange={setScrews}
             onFitModeChange={handleFitModeChange}
             onOrientationChange={handleOrientationChange}
             onGenerate={handleGenerate}

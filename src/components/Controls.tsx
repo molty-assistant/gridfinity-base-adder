@@ -8,6 +8,7 @@ interface ControlsProps {
   offsetX: number;
   offsetY: number;
   magnets: boolean;
+  screws: boolean;
   fitMode: FitMode;
   orientation: OrientationAxis;
   modelDims: { width: number; depth: number; height: number } | null;
@@ -20,6 +21,7 @@ interface ControlsProps {
   onOffsetXChange: (v: number) => void;
   onOffsetYChange: (v: number) => void;
   onMagnetsChange: (v: boolean) => void;
+  onScrewsChange: (v: boolean) => void;
   onFitModeChange: (v: FitMode) => void;
   onOrientationChange: (v: OrientationAxis) => void;
   onGenerate: () => void;
@@ -47,6 +49,7 @@ export default function Controls({
   offsetX,
   offsetY,
   magnets,
+  screws,
   fitMode,
   orientation,
   modelDims,
@@ -58,6 +61,7 @@ export default function Controls({
   onOffsetXChange,
   onOffsetYChange,
   onMagnetsChange,
+  onScrewsChange,
   onFitModeChange,
   onOrientationChange,
   onGenerate,
@@ -228,6 +232,22 @@ export default function Controls({
           />
           <label htmlFor="magnets" className="text-sm text-gray-300">
             Magnet holes (6.5mm)
+          </label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="screws"
+            checked={screws}
+            onChange={(e) => onScrewsChange(e.target.checked)}
+            disabled={!hasModel || isProcessing}
+            className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-500
+              focus:ring-blue-500 focus:ring-offset-gray-900
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <label htmlFor="screws" className="text-sm text-gray-300">
+            Screw holes (M3)
           </label>
         </div>
       </div>

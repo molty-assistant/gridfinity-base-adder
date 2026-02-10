@@ -35,6 +35,10 @@ export const MAGNET_DIAMETER = 6.5; // mm
 export const MAGNET_DEPTH = 2.4; // mm
 export const MAGNET_OFFSET = 4.8; // mm from edge of unit to center of magnet
 
+// Screw hole dimensions (M3)
+export const SCREW_DIAMETER = 3.0; // mm (M3)
+export const SCREW_DEPTH = 6.0; // mm — through the full base height minus a thin floor
+
 // Fitting mode tolerance
 export const FIT_TOLERANCE = 2.0; // mm - if overhang ≤ this, round UP
 
@@ -46,6 +50,7 @@ export interface GridfinityConfig {
   offsetX: number; // X offset in mm
   offsetY: number; // Y offset in mm
   magnets: boolean; // include magnet holes
+  screws: boolean; // include M3 screw holes
 }
 
 /**
@@ -200,18 +205,19 @@ export async function generateGridfinityBase(
 
       let unitBase = templateBase.translate([centerX, centerY, 0] as any);
 
+      // Corner positions for magnet/screw holes (same positions for both)
+      const inset = MAGNET_OFFSET;
+      const corners = [
+        [centerX - GRID_UNIT / 2 + inset, centerY - GRID_UNIT / 2 + inset],
+        [centerX + GRID_UNIT / 2 - inset, centerY - GRID_UNIT / 2 + inset],
+        [centerX - GRID_UNIT / 2 + inset, centerY + GRID_UNIT / 2 - inset],
+        [centerX + GRID_UNIT / 2 - inset, centerY + GRID_UNIT / 2 - inset],
+      ];
+
       // Add magnet holes if requested
       if (config.magnets) {
         const magnetHoles: any[] = [];
         const magnetRadius = MAGNET_DIAMETER / 2;
-        const inset = MAGNET_OFFSET;
-
-        const corners = [
-          [centerX - GRID_UNIT / 2 + inset, centerY - GRID_UNIT / 2 + inset],
-          [centerX + GRID_UNIT / 2 - inset, centerY - GRID_UNIT / 2 + inset],
-          [centerX - GRID_UNIT / 2 + inset, centerY + GRID_UNIT / 2 - inset],
-          [centerX + GRID_UNIT / 2 - inset, centerY + GRID_UNIT / 2 - inset],
-        ];
 
         for (const [mx, my] of corners) {
           const hole = Manifold.cylinder(
@@ -228,6 +234,30 @@ export async function generateGridfinityBase(
         unitBase = withHoles;
 
         for (const h of magnetHoles) {
+          h.delete();
+        }
+      }
+
+      // Add screw holes if requested (concentric with magnet positions)
+      if (config.screws) {
+        const screwHoles: any[] = [];
+        const screwRadius = SCREW_DIAMETER / 2;
+
+        for (const [mx, my] of corners) {
+          const hole = Manifold.cylinder(
+            SCREW_DEPTH,
+            screwRadius,
+            screwRadius,
+            16
+          ).translate([mx, my, 0] as any);
+          screwHoles.push(hole);
+        }
+
+        const withScrews = Manifold.difference([unitBase, ...screwHoles]);
+        unitBase.delete();
+        unitBase = withScrews;
+
+        for (const h of screwHoles) {
           h.delete();
         }
       }
