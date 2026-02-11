@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GRID_UNIT } from '../lib/gridfinity';
+import EmptyState from './EmptyState';
 
 interface ViewportProps {
   originalGeometry: THREE.BufferGeometry | null;
@@ -352,10 +353,12 @@ export default function Viewport({
     }
   }, [originalGeometry, baseGeometry, combinedGeometry, fitCamera]);
 
+  const isEmpty = !originalGeometry && !baseGeometry && !combinedGeometry;
+
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full min-h-[400px] rounded-xl overflow-hidden bg-gray-950"
-    />
+    <div className="relative w-full h-full min-h-[300px] lg:min-h-[600px] rounded-xl overflow-hidden bg-gray-950">
+      <div ref={containerRef} className="w-full h-full" />
+      {isEmpty && <EmptyState />}
+    </div>
   );
 }

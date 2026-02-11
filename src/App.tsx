@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import FileUpload from './components/FileUpload';
+import FileInfoBar from './components/FileInfoBar';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
+import Toast from './components/Toast';
 import type { OrientationAxis } from './components/Controls';
 import { parseSTL, getModelDimensions, exportSTL, downloadSTL } from './lib/stl';
 import { initManifold } from './lib/manifold';
@@ -12,7 +14,6 @@ import {
   geometryToManifoldMesh,
   manifoldMeshToArrays,
   BASE_HEIGHT,
-  GRID_UNIT,
 } from './lib/gridfinity';
 import type { FitMode } from './lib/gridfinity';
 
@@ -32,22 +33,21 @@ interface ModelDims {
 
 /**
  * Build a rotation matrix that brings the chosen face to become -Z (bottom).
- * The default orientation is -Z facing down (no rotation needed).
  */
 function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
   const mat = new THREE.Matrix4();
   switch (axis) {
-    case '-z': // default — no rotation
+    case '-z':
       return mat;
-    case '+z': // flip upside down — rotate 180° around X
+    case '+z':
       return mat.makeRotationX(Math.PI);
-    case '+x': // right face down — rotate -90° around Y
+    case '+x':
       return mat.makeRotationY(-Math.PI / 2);
-    case '-x': // left face down — rotate +90° around Y
+    case '-x':
       return mat.makeRotationY(Math.PI / 2);
-    case '+y': // back face down — rotate +90° around X
+    case '+y':
       return mat.makeRotationX(Math.PI / 2);
-    case '-y': // front face down — rotate -90° around X
+    case '-y':
       return mat.makeRotationX(-Math.PI / 2);
     default:
       return mat;
@@ -55,7 +55,6 @@ function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
 }
 
 function App() {
-  // Raw uploaded geometry (before orientation)
   const rawGeometryRef = useRef<THREE.BufferGeometry | null>(null);
 
   const [originalGeometry, setOriginalGeometry] =
@@ -66,6 +65,7 @@ function App() {
     useState<THREE.BufferGeometry | null>(null);
   const [modelDims, setModelDims] = useState<ModelDims | null>(null);
   const [filename, setFilename] = useState<string>('');
+  const [triangleCount, setTriangleCount] = useState(0);
 
   const [gridX, setGridX] = useState(1);
   const [gridY, setGridY] = useState(1);
@@ -78,8 +78,8 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Store combined mesh data for export
   const combinedDataRef = useRef<{
     positions: Float32Array;
     indices: Uint32Array;
@@ -95,28 +95,18 @@ function App() {
       });
   }, []);
 
-  /**
-   * Apply orientation to raw geometry: rotate, center XY, place bottom at Z=0
-   */
   const applyOrientation = useCallback((rawGeo: THREE.BufferGeometry, axis: OrientationAxis): {
     geometry: THREE.BufferGeometry;
     dims: ModelDims;
   } => {
     const geo = rawGeo.clone();
-
-    // Apply orientation rotation
     const rotMatrix = getOrientationMatrix(axis);
     geo.applyMatrix4(rotMatrix);
     geo.computeBoundingBox();
-
     const rawDims = getModelDimensions(geo);
-
-    // Center on XY and place bottom at Z=0
     geo.translate(-rawDims.centerX, -rawDims.centerY, -rawDims.minZ);
     geo.computeBoundingBox();
-
     const dims = getModelDimensions(geo);
-
     return {
       geometry: geo,
       dims: {
@@ -135,11 +125,8 @@ function App() {
     };
   }, []);
 
-  /**
-   * Recalculate grid units based on current dimensions and fit mode
-   */
   const recalcGrid = useCallback((dims: ModelDims, mode: FitMode) => {
-    if (mode === 'custom') return; // don't auto-change in custom mode
+    if (mode === 'custom') return;
     const units = calculateGridUnits(dims.width, dims.depth, mode);
     setGridX(units.gridX);
     setGridY(units.gridY);
@@ -150,7 +137,6 @@ function App() {
     (buffer: ArrayBuffer, name: string) => {
       setError(null);
       try {
-        // Dispose old geometries to prevent memory leaks
         if (rawGeometryRef.current) rawGeometryRef.current.dispose();
         originalGeometry?.dispose();
         baseGeometry?.dispose();
@@ -159,18 +145,22 @@ function App() {
         const rawGeo = parseSTL(buffer);
         rawGeometryRef.current = rawGeo;
 
+        // Count triangles
+        const posAttr = rawGeo.getAttribute('position');
+        const indexAttr = rawGeo.index;
+        const triCount = indexAttr ? indexAttr.count / 3 : posAttr.count / 3;
+        setTriangleCount(Math.round(triCount));
+
         const { geometry, dims } = applyOrientation(rawGeo, orientation);
 
         setOriginalGeometry(geometry);
         setModelDims(dims);
         setFilename(name);
 
-        // Auto-calculate grid units
         const units = calculateGridUnits(dims.width, dims.depth, fitMode);
         setGridX(units.gridX);
         setGridY(units.gridY);
 
-        // Reset previous results
         setBaseGeometry(null);
         setCombinedGeometry(null);
         combinedDataRef.current = null;
@@ -184,11 +174,33 @@ function App() {
     [applyOrientation, orientation, fitMode, originalGeometry, baseGeometry, combinedGeometry]
   );
 
+  // Handle removing the file
+  const handleRemoveFile = useCallback(() => {
+    if (rawGeometryRef.current) {
+      rawGeometryRef.current.dispose();
+      rawGeometryRef.current = null;
+    }
+    originalGeometry?.dispose();
+    baseGeometry?.dispose();
+    combinedGeometry?.dispose();
+
+    setOriginalGeometry(null);
+    setBaseGeometry(null);
+    setCombinedGeometry(null);
+    setModelDims(null);
+    setFilename('');
+    setTriangleCount(0);
+    combinedDataRef.current = null;
+    setOffsetX(0);
+    setOffsetY(0);
+    setOrientation('-z');
+    setError(null);
+  }, [originalGeometry, baseGeometry, combinedGeometry]);
+
   // Handle orientation change
   const handleOrientationChange = useCallback((axis: OrientationAxis) => {
     if (!rawGeometryRef.current) return;
 
-    // Dispose old geometries to prevent memory leaks
     originalGeometry?.dispose();
     baseGeometry?.dispose();
     combinedGeometry?.dispose();
@@ -199,12 +211,10 @@ function App() {
     setOriginalGeometry(geometry);
     setModelDims(dims);
 
-    // Recalculate grid for new orientation
     const units = calculateGridUnits(dims.width, dims.depth, fitMode);
     setGridX(units.gridX);
     setGridY(units.gridY);
 
-    // Reset results
     setBaseGeometry(null);
     setCombinedGeometry(null);
     combinedDataRef.current = null;
@@ -218,7 +228,6 @@ function App() {
     if (modelDims) {
       recalcGrid(modelDims, mode);
     }
-    // Reset results
     setBaseGeometry(null);
     setCombinedGeometry(null);
     combinedDataRef.current = null;
@@ -237,7 +246,6 @@ function App() {
     try {
       const wasm = await initManifold();
 
-      // Generate base mesh
       const config = {
         gridX,
         gridY,
@@ -249,7 +257,6 @@ function App() {
 
       const baseManifold = await generateGridfinityBase(wasm, config);
 
-      // Convert base to Three.js geometry for preview
       const baseMesh = baseManifold.getMesh();
       const baseArrays = manifoldMeshToArrays(baseMesh);
       baseMesh.delete();
@@ -263,8 +270,6 @@ function App() {
       baseGeo.computeVertexNormals();
       setBaseGeometry(baseGeo);
 
-      // Now convert original model to Manifold
-      // Shift the model UP by the base height so the base sits underneath
       const shiftedGeometry = originalGeometry.clone();
       shiftedGeometry.translate(0, 0, BASE_HEIGHT);
 
@@ -289,15 +294,12 @@ function App() {
       }
       modelMesh.delete();
 
-      // Boolean union
       const combined = modelManifold.add(baseManifold);
 
-      // Get result mesh
       const resultMesh = combined.getMesh();
       const resultArrays = manifoldMeshToArrays(resultMesh);
       resultMesh.delete();
 
-      // Create Three.js geometry
       const combinedGeo = new THREE.BufferGeometry();
       combinedGeo.setAttribute(
         'position',
@@ -311,13 +313,16 @@ function App() {
       setCombinedGeometry(combinedGeo);
       combinedDataRef.current = resultArrays;
 
-      // Clean up Manifold objects
       combined.delete();
       modelManifold.delete();
       baseManifold.delete();
+
+      // Show success toast
+      setToast({ message: '✅ Base generated! Preview below.', type: 'success' });
     } catch (err: any) {
       console.error('Generation failed:', err);
       setError(`Generation failed: ${err.message}`);
+      setToast({ message: '❌ Generation failed. Check error details.', type: 'error' });
     } finally {
       setIsProcessing(false);
     }
@@ -335,97 +340,148 @@ function App() {
   }, [filename, gridX, gridY]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gray-950">
+      {/* Toast notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
+      )}
+
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-3">
+      <header className="border-b border-gray-800 px-4 sm:px-6 py-3">
         <div className="flex items-center gap-3">
           <div className="text-xl">🔲</div>
           <div>
             <h1 className="text-lg font-bold text-gray-100">
               Gridfinity Base Adder
             </h1>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 hidden sm:block">
               Add Gridfinity-compatible bases to any STL model
             </p>
           </div>
           {!wasmReady && (
             <span className="ml-auto text-xs text-yellow-500 animate-pulse">
-              Loading 3D engine...
+              Loading engine…
             </span>
           )}
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col lg:flex-row">
-        {/* Viewport */}
-        <div className="flex-1 p-4">
-          <div className="h-full min-h-[400px] lg:min-h-[600px] rounded-xl border border-gray-800 overflow-hidden">
-            <Viewport
-              originalGeometry={originalGeometry}
-              baseGeometry={baseGeometry}
-              combinedGeometry={combinedGeometry}
+      {/* Mobile layout: upload → viewport → controls (top to bottom) */}
+      {/* Desktop layout: viewport (left) + sidebar (right), upload in sidebar top */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+        {/* Left side: Upload (mobile only) + Viewport */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* File upload — top on mobile, hidden on desktop (moved to sidebar) */}
+          <div className="lg:hidden p-3 pb-0">
+            {filename ? (
+              <FileInfoBar
+                filename={filename}
+                triangleCount={triangleCount}
+                dimensions={modelDims}
+                onRemove={handleRemoveFile}
+              />
+            ) : (
+              <FileUpload
+                onFileLoaded={handleFileLoaded}
+                disabled={!wasmReady || isProcessing}
+              />
+            )}
+          </div>
+
+          {/* Viewport */}
+          <div className="flex-1 p-3 min-h-0">
+            <div className="h-full rounded-xl border border-gray-800 overflow-hidden">
+              <Viewport
+                originalGeometry={originalGeometry}
+                baseGeometry={baseGeometry}
+                combinedGeometry={combinedGeometry}
+                gridX={gridX}
+                gridY={gridY}
+                offsetX={offsetX}
+                offsetY={offsetY}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar / Controls */}
+        <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-gray-800 overflow-y-auto">
+          <div className="p-3 lg:p-4 space-y-3">
+
+            {/* File upload — desktop only (in sidebar) */}
+            <div className="hidden lg:block">
+              {filename ? (
+                <FileInfoBar
+                  filename={filename}
+                  triangleCount={triangleCount}
+                  dimensions={modelDims}
+                  onRemove={handleRemoveFile}
+                />
+              ) : (
+                <FileUpload
+                  onFileLoaded={handleFileLoaded}
+                  disabled={!wasmReady || isProcessing}
+                />
+              )}
+            </div>
+
+            {/* Processing indicator */}
+            {isProcessing && (
+              <div className="bg-blue-950/30 border border-blue-700/30 rounded-xl p-3 flex items-center gap-3">
+                <div className="relative w-8 h-8 shrink-0">
+                  <svg className="animate-spin w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-blue-300">Generating base…</div>
+                  <div className="text-xs text-blue-400/60">Boolean union in progress</div>
+                </div>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-xs text-red-300">
+                {error}
+              </div>
+            )}
+
+            {/* Controls */}
+            <Controls
               gridX={gridX}
               gridY={gridY}
               offsetX={offsetX}
               offsetY={offsetY}
+              magnets={magnets}
+              screws={screws}
+              fitMode={fitMode}
+              orientation={orientation}
+              modelDims={modelDims}
+              hasModel={!!originalGeometry}
+              hasBase={!!baseGeometry}
+              hasCombined={!!combinedGeometry}
+              isProcessing={isProcessing}
+              filename={filename}
+              onGridXChange={setGridX}
+              onGridYChange={setGridY}
+              onOffsetXChange={setOffsetX}
+              onOffsetYChange={setOffsetY}
+              onMagnetsChange={setMagnets}
+              onScrewsChange={setScrews}
+              onFitModeChange={handleFitModeChange}
+              onOrientationChange={handleOrientationChange}
+              onGenerate={handleGenerate}
+              onDownload={handleDownload}
             />
           </div>
         </div>
-
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 p-4 lg:pl-0 border-t lg:border-t-0 lg:border-l border-gray-800 overflow-y-auto max-h-screen">
-          <Controls
-            gridX={gridX}
-            gridY={gridY}
-            offsetX={offsetX}
-            offsetY={offsetY}
-            magnets={magnets}
-            screws={screws}
-            fitMode={fitMode}
-            orientation={orientation}
-            modelDims={modelDims}
-            hasModel={!!originalGeometry}
-            hasBase={!!baseGeometry}
-            hasCombined={!!combinedGeometry}
-            isProcessing={isProcessing}
-            onGridXChange={setGridX}
-            onGridYChange={setGridY}
-            onOffsetXChange={setOffsetX}
-            onOffsetYChange={setOffsetY}
-            onMagnetsChange={setMagnets}
-            onScrewsChange={setScrews}
-            onFitModeChange={handleFitModeChange}
-            onOrientationChange={handleOrientationChange}
-            onGenerate={handleGenerate}
-            onDownload={handleDownload}
-          />
-
-          {error && (
-            <div className="mt-4 p-3 rounded-lg bg-red-950/50 border border-red-800 text-xs text-red-300">
-              {error}
-            </div>
-          )}
-
-          <div className="mt-6 text-xs text-gray-600 space-y-1">
-            <p>Grid unit: {GRID_UNIT}mm × {GRID_UNIT}mm</p>
-            <p>Base height: {BASE_HEIGHT.toFixed(1)}mm</p>
-            <p>All processing runs in your browser.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* File upload footer */}
-      <div className="p-4 border-t border-gray-800">
-        <FileUpload
-          onFileLoaded={handleFileLoaded}
-          disabled={!wasmReady || isProcessing}
-        />
-        {filename && (
-          <p className="mt-2 text-xs text-gray-500 text-center">
-            Loaded: {filename}
-          </p>
-        )}
       </div>
     </div>
   );
