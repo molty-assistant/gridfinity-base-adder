@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import type { Manifold as WasmManifold } from 'manifold-3d';
 import FileUpload from './components/FileUpload';
 import FileInfoBar from './components/FileInfoBar';
 import Viewport from './components/Viewport';
@@ -29,6 +30,11 @@ interface ModelDims {
   maxZ: number;
   centerX: number;
   centerY: number;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 /**
@@ -137,10 +143,8 @@ function App() {
     (buffer: ArrayBuffer, name: string) => {
       setError(null);
       try {
+        // Dispose previous uploaded geometry to avoid GPU memory leaks.
         if (rawGeometryRef.current) rawGeometryRef.current.dispose();
-        originalGeometry?.dispose();
-        baseGeometry?.dispose();
-        combinedGeometry?.dispose();
 
         const rawGeo = parseSTL(buffer);
         rawGeometryRef.current = rawGeo;
@@ -153,7 +157,10 @@ function App() {
 
         const { geometry, dims } = applyOrientation(rawGeo, orientation);
 
-        setOriginalGeometry(geometry);
+        setOriginalGeometry((prev) => {
+          prev?.dispose();
+          return geometry;
+        });
         setModelDims(dims);
         setFilename(name);
 
@@ -161,17 +168,24 @@ function App() {
         setGridX(units.gridX);
         setGridY(units.gridY);
 
-        setBaseGeometry(null);
-        setCombinedGeometry(null);
+        // Reset previous results
+        setBaseGeometry((prev) => {
+          prev?.dispose();
+          return null;
+        });
+        setCombinedGeometry((prev) => {
+          prev?.dispose();
+          return null;
+        });
         combinedDataRef.current = null;
         setOffsetX(0);
         setOffsetY(0);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Failed to parse STL:', err);
-        setError(`Failed to parse STL file: ${err.message}`);
+        setError(`Failed to parse STL file: ${getErrorMessage(err)}`);
       }
     },
-    [applyOrientation, orientation, fitMode, originalGeometry, baseGeometry, combinedGeometry]
+    [applyOrientation, orientation, fitMode]
   );
 
   // Handle removing the file
@@ -201,26 +215,31 @@ function App() {
   const handleOrientationChange = useCallback((axis: OrientationAxis) => {
     if (!rawGeometryRef.current) return;
 
-    originalGeometry?.dispose();
-    baseGeometry?.dispose();
-    combinedGeometry?.dispose();
-
     setOrientation(axis);
     const { geometry, dims } = applyOrientation(rawGeometryRef.current, axis);
 
-    setOriginalGeometry(geometry);
+    setOriginalGeometry((prev) => {
+      prev?.dispose();
+      return geometry;
+    });
     setModelDims(dims);
 
-    const units = calculateGridUnits(dims.width, dims.depth, fitMode);
-    setGridX(units.gridX);
-    setGridY(units.gridY);
+    // Recalculate grid for new orientation (preserves custom mode values)
+    recalcGrid(dims, fitMode);
 
-    setBaseGeometry(null);
-    setCombinedGeometry(null);
+    // Reset results
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
     combinedDataRef.current = null;
     setOffsetX(0);
     setOffsetY(0);
-  }, [applyOrientation, fitMode, originalGeometry, baseGeometry, combinedGeometry]);
+  }, [applyOrientation, fitMode, recalcGrid]);
 
   // Handle fit mode change
   const handleFitModeChange = useCallback((mode: FitMode) => {
@@ -228,8 +247,15 @@ function App() {
     if (modelDims) {
       recalcGrid(modelDims, mode);
     }
-    setBaseGeometry(null);
-    setCombinedGeometry(null);
+    // Reset results
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
     combinedDataRef.current = null;
   }, [modelDims, recalcGrid]);
 
@@ -239,9 +265,19 @@ function App() {
 
     setIsProcessing(true);
     setError(null);
-    setCombinedGeometry(null);
-    setBaseGeometry(null);
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
     combinedDataRef.current = null;
+
+    let baseManifold: WasmManifold | null = null;
+    let modelManifold: WasmManifold | null = null;
+    let combined: WasmManifold | null = null;
 
     try {
       const wasm = await initManifold();
@@ -255,11 +291,10 @@ function App() {
         screws,
       };
 
-      const baseManifold = await generateGridfinityBase(wasm, config);
+      baseManifold = await generateGridfinityBase(wasm, config);
 
       const baseMesh = baseManifold.getMesh();
       const baseArrays = manifoldMeshToArrays(baseMesh);
-      baseMesh.delete();
 
       const baseGeo = new THREE.BufferGeometry();
       baseGeo.setAttribute(
@@ -276,29 +311,24 @@ function App() {
       const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
       shiftedGeometry.dispose();
 
-      let modelManifold: any;
       try {
         modelManifold = new wasm.Manifold(modelMesh);
-      } catch (meshErr: any) {
+      } catch (meshErr: unknown) {
         console.warn(
           'Model is not manifold, trying to fix...',
-          meshErr.message
+          getErrorMessage(meshErr)
         );
-        modelMesh.delete();
         setError(
           'The uploaded model has mesh errors (non-manifold geometry). Try repairing it with Microsoft 3D Builder (free, Windows) or Meshmixer (free) before uploading. Most STL repair tools can fix this automatically.'
         );
-        setIsProcessing(false);
-        baseManifold.delete();
         return;
       }
-      modelMesh.delete();
 
-      const combined = modelManifold.add(baseManifold);
+      // Boolean union
+      combined = modelManifold.add(baseManifold);
 
       const resultMesh = combined.getMesh();
       const resultArrays = manifoldMeshToArrays(resultMesh);
-      resultMesh.delete();
 
       const combinedGeo = new THREE.BufferGeometry();
       combinedGeo.setAttribute(
@@ -312,18 +342,15 @@ function App() {
 
       setCombinedGeometry(combinedGeo);
       combinedDataRef.current = resultArrays;
-
-      combined.delete();
-      modelManifold.delete();
-      baseManifold.delete();
-
-      // Show success toast
       setToast({ message: '✅ Base generated! Preview below.', type: 'success' });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Generation failed:', err);
-      setError(`Generation failed: ${err.message}`);
+      setError(`Generation failed: ${getErrorMessage(err)}`);
       setToast({ message: '❌ Generation failed. Check error details.', type: 'error' });
     } finally {
+      combined?.delete();
+      modelManifold?.delete();
+      baseManifold?.delete();
       setIsProcessing(false);
     }
   }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws]);
