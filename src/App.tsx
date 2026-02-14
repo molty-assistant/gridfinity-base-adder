@@ -423,7 +423,19 @@ function App() {
       }
 
       // Boolean union
+      const modelVolume = modelManifold.volume();
       combined = modelManifold.add(baseManifold);
+      const combinedVolume = combined.volume();
+
+      if (placement === 'inside' && Math.abs(combinedVolume - modelVolume) < 1) {
+        setError(
+          'Inside mode added almost no new volume. This model is likely mostly solid at that face. Try Turn Into Box, or rotate Bottom Face to an interior-facing side.'
+        );
+        setToast({
+          message: '⚠️ Inside mode had minimal effect on this STL',
+          type: 'info',
+        });
+      }
 
       const resultMesh = combined.getMesh();
       const resultArrays = manifoldMeshToArrays(resultMesh);
@@ -515,6 +527,7 @@ function App() {
                 gridY={gridY}
                 offsetX={offsetX}
                 offsetY={offsetY}
+                placement={placement}
               />
             </div>
           </div>

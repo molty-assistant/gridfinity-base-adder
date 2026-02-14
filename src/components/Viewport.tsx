@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GRID_UNIT } from '../lib/gridfinity';
 import EmptyState from './EmptyState';
+import type { BasePlacement } from './Controls';
 
 interface ViewportProps {
   originalGeometry: THREE.BufferGeometry | null;
@@ -12,6 +13,7 @@ interface ViewportProps {
   gridY: number;
   offsetX: number;
   offsetY: number;
+  placement: BasePlacement;
 }
 
 export default function Viewport({
@@ -22,6 +24,7 @@ export default function Viewport({
   gridY,
   offsetX,
   offsetY,
+  placement,
 }: ViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{
@@ -311,6 +314,8 @@ export default function Viewport({
         color: 0x4488ff,
         metalness: 0.1,
         roughness: 0.4,
+        transparent: placement === 'inside',
+        opacity: placement === 'inside' ? 0.62 : 1,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(combinedGeometry, mat);
@@ -324,6 +329,8 @@ export default function Viewport({
           color: 0x88aacc,
           metalness: 0.1,
           roughness: 0.4,
+          transparent: placement === 'inside',
+          opacity: placement === 'inside' ? 0.45 : 1,
           side: THREE.DoubleSide,
         });
         const mesh = new THREE.Mesh(originalGeometry, mat);
@@ -351,7 +358,7 @@ export default function Viewport({
     if (objectsToFit.length > 0) {
       fitCamera(objectsToFit);
     }
-  }, [originalGeometry, baseGeometry, combinedGeometry, fitCamera]);
+  }, [originalGeometry, baseGeometry, combinedGeometry, fitCamera, placement]);
 
   const isEmpty = !originalGeometry && !baseGeometry && !combinedGeometry;
 

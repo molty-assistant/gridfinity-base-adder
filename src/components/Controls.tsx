@@ -51,8 +51,14 @@ const orientationButtons: { axis: OrientationAxis; label: string; title: string 
 ];
 
 const placementLabels: Record<BasePlacement, { label: string; desc: string }> = {
-  outside: { label: 'Outside', desc: 'Attach base outside the selected bottom face' },
-  inside: { label: 'Inside', desc: 'Attach base inward on the selected face' },
+  outside: {
+    label: 'Turn Into Box',
+    desc: 'Attach the base on the outside of the selected bottom face',
+  },
+  inside: {
+    label: 'Add Base Inside',
+    desc: 'Attach the base inward from the selected face (for trays/boxes)',
+  },
 };
 
 export default function Controls({
@@ -144,7 +150,7 @@ export default function Controls({
       {hasModel && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
           <label className="block text-xs font-medium text-gray-400 mb-2">
-            Placement
+            Workflow
           </label>
           <div className="grid grid-cols-2 gap-1.5">
             {(Object.keys(placementLabels) as BasePlacement[]).map((value) => (
