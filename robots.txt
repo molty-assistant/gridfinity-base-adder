@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://molty-assistant.github.io/gridfinity-base-adder/sitemap.xml
