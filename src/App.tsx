@@ -397,29 +397,12 @@ function App() {
         </div>
       </header>
 
-      {/* Mobile layout: upload → viewport → controls (top to bottom) */}
+      {/* Mobile layout: sidebar (upload + controls) first, viewport second */}
       {/* Desktop layout: viewport (left) + sidebar (right), upload in sidebar top */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-        {/* Left side: Upload (mobile only) + Viewport */}
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* File upload — top on mobile, hidden on desktop (moved to sidebar) */}
-          <div className="lg:hidden p-3 pb-0">
-            {filename ? (
-              <FileInfoBar
-                filename={filename}
-                triangleCount={triangleCount}
-                dimensions={modelDims}
-                onRemove={handleRemoveFile}
-              />
-            ) : (
-              <FileUpload
-                onFileLoaded={handleFileLoaded}
-                disabled={!wasmReady || isProcessing}
-              />
-            )}
-          </div>
-
+        {/* Left side: Viewport */}
+        <div className="order-2 lg:order-1 flex-1 flex flex-col min-h-0">
           {/* Viewport */}
           <div className="flex-1 p-3 min-h-0">
             <div className="h-full rounded-xl border border-gray-800 overflow-hidden">
@@ -437,11 +420,11 @@ function App() {
         </div>
 
         {/* Sidebar / Controls */}
-        <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-gray-800 overflow-y-auto">
+        <div className="order-1 lg:order-2 w-full lg:w-80 xl:w-96 border-b lg:border-b-0 lg:border-l border-gray-800 overflow-y-auto">
           <div className="p-3 lg:p-4 space-y-3">
 
-            {/* File upload — desktop only (in sidebar) */}
-            <div className="hidden lg:block">
+            {/* File upload — always top of sidebar */}
+            <div>
               {filename ? (
                 <FileInfoBar
                   filename={filename}
