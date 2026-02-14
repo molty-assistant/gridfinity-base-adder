@@ -5,6 +5,11 @@ interface FileUploadProps {
   disabled?: boolean;
 }
 
+const WARN_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_MB = 20;
+const WARN_FILE_SIZE_BYTES = WARN_FILE_SIZE_MB * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -15,6 +20,19 @@ export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) 
         alert('Please upload an STL file.');
         return;
       }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum supported size is ${MAX_FILE_SIZE_MB}MB.`);
+        return;
+      }
+
+      if (file.size > WARN_FILE_SIZE_BYTES) {
+        const proceed = window.confirm(
+          `This STL is ${(file.size / 1024 / 1024).toFixed(1)}MB. Large files can be slow in-browser. Continue?`
+        );
+        if (!proceed) return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         if (reader.result instanceof ArrayBuffer) {

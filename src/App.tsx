@@ -157,6 +157,46 @@ function App() {
       });
   }, []);
 
+  // Ko-fi floating support button
+  useEffect(() => {
+    const scriptId = 'kofi-overlay-widget-script';
+
+    const drawWidget = () => {
+      if (window.__kofiOverlayInit) return;
+      const overlay = window.kofiWidgetOverlay;
+      if (!overlay || typeof overlay.draw !== 'function') return;
+
+      overlay.draw('lightscout', {
+        type: 'floating-chat',
+        'floating-chat.donateButton.text': 'Support Me',
+        'floating-chat.donateButton.background-color': '#00b9fe',
+        'floating-chat.donateButton.text-color': '#fff',
+      });
+      window.__kofiOverlayInit = true;
+    };
+
+    const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existing) {
+      if (window.kofiWidgetOverlay) {
+        drawWidget();
+      } else {
+        existing.addEventListener('load', drawWidget, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
+    script.async = true;
+    script.onload = drawWidget;
+    document.body.appendChild(script);
+
+    return () => {
+      script.onload = null;
+    };
+  }, []);
+
   const applyOrientation = useCallback((rawGeo: THREE.BufferGeometry, axis: OrientationAxis): {
     geometry: THREE.BufferGeometry;
     dims: ModelDims;
@@ -605,20 +645,6 @@ function App() {
               onPlacementChange={handlePlacementChange}
               onGenerate={handleGenerate}
               onDownload={handleDownload}
-            />
-
-            <iframe
-              id="kofiframe"
-              src="https://ko-fi.com/lightscout/?hidefeed=true&widget=true&embed=true&preview=true"
-              style={{
-                border: 'none',
-                width: '100%',
-                padding: '4px',
-                background: '#f9f9f9',
-              }}
-              height={712}
-              title="lightscout"
-              loading="lazy"
             />
           </div>
         </div>
