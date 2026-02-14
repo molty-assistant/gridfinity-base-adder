@@ -353,7 +353,13 @@ export function geometryToManifoldMesh(
     triVerts,
   });
 
-  // Note: Mesh is a plain data container in these bindings; it has no merge().
+  // Weld coincident vertices when available. This significantly improves
+  // manifold detection for typical STL triangle soups.
+  const mergeableMesh = mesh as Mesh & { merge?: () => boolean };
+  if (typeof mergeableMesh.merge === 'function') {
+    mergeableMesh.merge();
+  }
+
   return mesh;
 }
 

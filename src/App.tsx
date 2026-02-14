@@ -6,7 +6,7 @@ import FileInfoBar from './components/FileInfoBar';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Toast from './components/Toast';
-import type { OrientationAxis } from './components/Controls';
+import type { BasePlacement, OrientationAxis } from './components/Controls';
 import { parseSTL, getModelDimensions, exportSTL, downloadSTL } from './lib/stl';
 import { initManifold } from './lib/manifold';
 import {
@@ -81,6 +81,7 @@ function App() {
   const [screws, setScrews] = useState(false);
   const [fitMode, setFitMode] = useState<FitMode>('inside');
   const [orientation, setOrientation] = useState<OrientationAxis>('-z');
+  const [placement, setPlacement] = useState<BasePlacement>('outside');
   const [isProcessing, setIsProcessing] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +209,7 @@ function App() {
     setOffsetX(0);
     setOffsetY(0);
     setOrientation('-z');
+    setPlacement('outside');
     setError(null);
   }, [originalGeometry, baseGeometry, combinedGeometry]);
 
@@ -259,6 +261,19 @@ function App() {
     combinedDataRef.current = null;
   }, [modelDims, recalcGrid]);
 
+  const handlePlacementChange = useCallback((value: BasePlacement) => {
+    setPlacement(value);
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    combinedDataRef.current = null;
+  }, []);
+
   // Generate the base and union it with the model
   const handleGenerate = useCallback(async () => {
     if (!originalGeometry || !wasmReady) return;
@@ -303,10 +318,17 @@ function App() {
       );
       baseGeo.setIndex(new THREE.BufferAttribute(baseArrays.indices, 1));
       baseGeo.computeVertexNormals();
+
+      // Match preview placement to final boolean placement.
+      if (placement === 'outside') {
+        baseGeo.translate(0, 0, -BASE_HEIGHT);
+      }
       setBaseGeometry(baseGeo);
 
       const shiftedGeometry = originalGeometry.clone();
-      shiftedGeometry.translate(0, 0, BASE_HEIGHT);
+      if (placement === 'outside') {
+        shiftedGeometry.translate(0, 0, BASE_HEIGHT);
+      }
 
       const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
       shiftedGeometry.dispose();
@@ -319,7 +341,7 @@ function App() {
           getErrorMessage(meshErr)
         );
         setError(
-          'The uploaded model has mesh errors (non-manifold geometry). Try repairing it with Microsoft 3D Builder (free, Windows) or Meshmixer (free) before uploading. Most STL repair tools can fix this automatically.'
+          'Model conversion failed (non-manifold). Try toggling Bottom Face or Base Side first. If it still fails, repair the STL with 3D Builder or Meshmixer.'
         );
         return;
       }
@@ -353,7 +375,7 @@ function App() {
       baseManifold?.delete();
       setIsProcessing(false);
     }
-  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws]);
+  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws, placement]);
 
   // Download the combined STL
   const handleDownload = useCallback(() => {
@@ -473,6 +495,7 @@ function App() {
               screws={screws}
               fitMode={fitMode}
               orientation={orientation}
+              placement={placement}
               modelDims={modelDims}
               hasModel={!!originalGeometry}
               hasBase={!!baseGeometry}
@@ -487,6 +510,7 @@ function App() {
               onScrewsChange={setScrews}
               onFitModeChange={handleFitModeChange}
               onOrientationChange={handleOrientationChange}
+              onPlacementChange={handlePlacementChange}
               onGenerate={handleGenerate}
               onDownload={handleDownload}
             />

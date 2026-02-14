@@ -4,6 +4,7 @@ import type { FitMode } from '../lib/gridfinity';
 import { GRID_UNIT, BASE_HEIGHT } from '../lib/gridfinity';
 
 export type OrientationAxis = '+z' | '-z' | '+x' | '-x' | '+y' | '-y';
+export type BasePlacement = 'outside' | 'inside';
 
 interface ControlsProps {
   gridX: number;
@@ -14,6 +15,7 @@ interface ControlsProps {
   screws: boolean;
   fitMode: FitMode;
   orientation: OrientationAxis;
+  placement: BasePlacement;
   modelDims: { width: number; depth: number; height: number } | null;
   hasModel: boolean;
   hasBase: boolean;
@@ -28,6 +30,7 @@ interface ControlsProps {
   onScrewsChange: (v: boolean) => void;
   onFitModeChange: (v: FitMode) => void;
   onOrientationChange: (v: OrientationAxis) => void;
+  onPlacementChange: (v: BasePlacement) => void;
   onGenerate: () => void;
   onDownload: () => void;
 }
@@ -47,6 +50,11 @@ const orientationButtons: { axis: OrientationAxis; label: string; title: string 
   { axis: '+y', label: '▲', title: 'Back (+Y)' },
 ];
 
+const placementLabels: Record<BasePlacement, { label: string; desc: string }> = {
+  outside: { label: 'Outside', desc: 'Attach base outward from selected face' },
+  inside: { label: 'Inside', desc: 'Embed base inward from selected face' },
+};
+
 export default function Controls({
   gridX,
   gridY,
@@ -56,6 +64,7 @@ export default function Controls({
   screws,
   fitMode,
   orientation,
+  placement,
   modelDims,
   hasModel,
   hasCombined,
@@ -69,6 +78,7 @@ export default function Controls({
   onScrewsChange,
   onFitModeChange,
   onOrientationChange,
+  onPlacementChange,
   onGenerate,
   onDownload,
 }: ControlsProps) {
@@ -81,6 +91,7 @@ export default function Controls({
       `Grid: ${gridX}×${gridY} (${(gridX * GRID_UNIT).toFixed(0)}×${(gridY * GRID_UNIT).toFixed(0)}mm)`,
       `Fit Mode: ${fitModeLabels[fitMode].label}`,
       `Orientation: ${orientation}`,
+      `Base Side: ${placementLabels[placement].label}`,
       `Offset: X=${offsetX.toFixed(1)}mm, Y=${offsetY.toFixed(1)}mm`,
       `Magnets: ${magnets ? 'Yes' : 'No'}`,
       `Screws: ${screws ? 'Yes' : 'No'}`,
@@ -273,6 +284,34 @@ export default function Controls({
             </div>
             <p className="text-[10px] text-gray-600 mt-1.5">
               Rotate model so a different face becomes the bottom
+            </p>
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-400 mb-2">
+              Base Side
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(Object.keys(placementLabels) as BasePlacement[]).map((value) => (
+                <button
+                  key={value}
+                  onClick={() => onPlacementChange(value)}
+                  disabled={isProcessing}
+                  className={`
+                    py-2 px-2 rounded-lg text-xs font-medium transition-all
+                    ${placement === value
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                    }
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                  `}
+                >
+                  {placementLabels[value].label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-600 mt-1.5">
+              {placementLabels[placement].desc}
             </p>
           </div>
         </CollapsibleSection>
