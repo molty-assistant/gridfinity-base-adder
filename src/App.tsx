@@ -157,46 +157,6 @@ function App() {
       });
   }, []);
 
-  // Ko-fi floating support button
-  useEffect(() => {
-    const scriptId = 'kofi-overlay-widget-script';
-
-    const drawWidget = () => {
-      if (window.__kofiOverlayInit) return;
-      const overlay = window.kofiWidgetOverlay;
-      if (!overlay || typeof overlay.draw !== 'function') return;
-
-      overlay.draw('lightscout', {
-        type: 'floating-chat',
-        'floating-chat.donateButton.text': 'Support Me',
-        'floating-chat.donateButton.background-color': '#00b9fe',
-        'floating-chat.donateButton.text-color': '#fff',
-      });
-      window.__kofiOverlayInit = true;
-    };
-
-    const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (existing) {
-      if (window.kofiWidgetOverlay) {
-        drawWidget();
-      } else {
-        existing.addEventListener('load', drawWidget, { once: true });
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
-    script.async = true;
-    script.onload = drawWidget;
-    document.body.appendChild(script);
-
-    return () => {
-      script.onload = null;
-    };
-  }, []);
-
   const applyOrientation = useCallback((rawGeo: THREE.BufferGeometry, axis: OrientationAxis): {
     geometry: THREE.BufferGeometry;
     dims: ModelDims;
@@ -646,6 +606,18 @@ function App() {
               onGenerate={handleGenerate}
               onDownload={handleDownload}
             />
+
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3">
+              <p className="text-xs text-gray-400 mb-2">Enjoying the tool?</p>
+              <a
+                href="https://ko-fi.com/lightscout"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-sky-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-400"
+              >
+                Support Me
+              </a>
+            </div>
           </div>
         </div>
       </div>
