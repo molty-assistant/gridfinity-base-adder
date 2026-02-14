@@ -51,8 +51,8 @@ const orientationButtons: { axis: OrientationAxis; label: string; title: string 
 ];
 
 const placementLabels: Record<BasePlacement, { label: string; desc: string }> = {
-  outside: { label: 'Outside', desc: 'Attach base outward from selected face' },
-  inside: { label: 'Inside', desc: 'Embed base inward from selected face' },
+  outside: { label: 'Gridfinity Box', desc: 'Add base to outside of the selected bottom face' },
+  inside: { label: 'Internal Base', desc: 'Place base on the inside of the selected face' },
 };
 
 export default function Controls({
@@ -289,7 +289,7 @@ export default function Controls({
 
           <div className="mt-3">
             <label className="block text-xs font-medium text-gray-400 mb-2">
-              Base Side
+              Use Case
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               {(Object.keys(placementLabels) as BasePlacement[]).map((value) => (

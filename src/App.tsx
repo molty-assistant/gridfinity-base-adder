@@ -32,9 +32,64 @@ interface ModelDims {
   centerY: number;
 }
 
+interface MeshArrays {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function geometryToArrays(geometry: THREE.BufferGeometry): MeshArrays {
+  const posAttr = geometry.getAttribute('position');
+  if (!posAttr) {
+    throw new Error('Geometry has no position attribute');
+  }
+
+  const positions = new Float32Array(posAttr.array.length);
+  positions.set(posAttr.array as ArrayLike<number>);
+
+  const index = geometry.getIndex();
+  if (index) {
+    return {
+      positions,
+      indices: new Uint32Array(index.array as ArrayLike<number>),
+    };
+  }
+
+  const indices = new Uint32Array(posAttr.count);
+  for (let i = 0; i < posAttr.count; i++) {
+    indices[i] = i;
+  }
+  return { positions, indices };
+}
+
+function combineMeshArrays(parts: MeshArrays[]): MeshArrays {
+  const totalPositions = parts.reduce((sum, p) => sum + p.positions.length, 0);
+  const totalIndices = parts.reduce((sum, p) => sum + p.indices.length, 0);
+
+  const positions = new Float32Array(totalPositions);
+  const indices = new Uint32Array(totalIndices);
+
+  let positionOffset = 0;
+  let indexOffset = 0;
+  let vertexOffset = 0;
+
+  for (const part of parts) {
+    positions.set(part.positions, positionOffset);
+
+    for (let i = 0; i < part.indices.length; i++) {
+      indices[indexOffset + i] = part.indices[i] + vertexOffset;
+    }
+
+    positionOffset += part.positions.length;
+    indexOffset += part.indices.length;
+    vertexOffset += part.positions.length / 3;
+  }
+
+  return { positions, indices };
 }
 
 /**
@@ -168,6 +223,7 @@ function App() {
         const units = calculateGridUnits(dims.width, dims.depth, fitMode);
         setGridX(units.gridX);
         setGridY(units.gridY);
+        setPlacement('outside');
 
         // Reset previous results
         setBaseGeometry((prev) => {
@@ -331,7 +387,6 @@ function App() {
       }
 
       const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
-      shiftedGeometry.dispose();
 
       try {
         modelManifold = new wasm.Manifold(modelMesh);
@@ -340,10 +395,31 @@ function App() {
           'Model is not manifold, trying to fix...',
           getErrorMessage(meshErr)
         );
-        setError(
-          'Model conversion failed (non-manifold). Try toggling Bottom Face or Base Side first. If it still fails, repair the STL with 3D Builder or Meshmixer.'
+
+        // Fallback: keep model + base as overlapping solids (no boolean).
+        // Many slicers can union overlapping volumes at slice time.
+        const modelArrays = geometryToArrays(shiftedGeometry);
+        const fallbackArrays = combineMeshArrays([modelArrays, baseArrays]);
+        const fallbackGeo = new THREE.BufferGeometry();
+        fallbackGeo.setAttribute(
+          'position',
+          new THREE.BufferAttribute(fallbackArrays.positions, 3)
         );
+        fallbackGeo.setIndex(new THREE.BufferAttribute(fallbackArrays.indices, 1));
+        fallbackGeo.computeVertexNormals();
+
+        setCombinedGeometry(fallbackGeo);
+        combinedDataRef.current = fallbackArrays;
+        setError(
+          'Boolean union failed on this STL, so compatibility mode was used (model + base exported together as overlapping solids). Most slicers merge these automatically.'
+        );
+        setToast({
+          message: '⚠️ Used compatibility mode for this STL',
+          type: 'info',
+        });
         return;
+      } finally {
+        shiftedGeometry.dispose();
       }
 
       // Boolean union
@@ -411,8 +487,11 @@ function App() {
               Add Gridfinity-compatible bases to any STL model
             </p>
           </div>
+          <span className="ml-auto text-[10px] font-mono text-gray-500 border border-gray-700 rounded px-2 py-0.5">
+            v{__APP_VERSION__}
+          </span>
           {!wasmReady && (
-            <span className="ml-auto text-xs text-yellow-500 animate-pulse">
+            <span className="text-xs text-yellow-500 animate-pulse">
               Loading engine…
             </span>
           )}
