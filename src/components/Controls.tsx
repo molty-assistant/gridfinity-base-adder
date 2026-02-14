@@ -51,8 +51,8 @@ const orientationButtons: { axis: OrientationAxis; label: string; title: string 
 ];
 
 const placementLabels: Record<BasePlacement, { label: string; desc: string }> = {
-  outside: { label: 'Gridfinity Box', desc: 'Add base to outside of the selected bottom face' },
-  inside: { label: 'Internal Base', desc: 'Place base on the inside of the selected face' },
+  outside: { label: 'Outside', desc: 'Attach base outside the selected bottom face' },
+  inside: { label: 'Inside', desc: 'Attach base inward on the selected face' },
 };
 
 export default function Controls({
@@ -138,6 +138,37 @@ export default function Controls({
         <p className="text-xs text-yellow-400/70 text-center">
           Adjust settings below, then generate.
         </p>
+      )}
+
+      {/* Placement choice should always be visible */}
+      {hasModel && (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
+          <label className="block text-xs font-medium text-gray-400 mb-2">
+            Placement
+          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(Object.keys(placementLabels) as BasePlacement[]).map((value) => (
+              <button
+                key={value}
+                onClick={() => onPlacementChange(value)}
+                disabled={isProcessing}
+                className={`
+                  py-2 px-2 rounded-lg text-xs font-medium transition-all
+                  ${placement === value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                {placementLabels[value].label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-600 mt-1.5">
+            {placementLabels[placement].desc}
+          </p>
+        </div>
       )}
 
       {/* Download section — prominent when available */}
@@ -287,33 +318,6 @@ export default function Controls({
             </p>
           </div>
 
-          <div className="mt-3">
-            <label className="block text-xs font-medium text-gray-400 mb-2">
-              Use Case
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(Object.keys(placementLabels) as BasePlacement[]).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => onPlacementChange(value)}
-                  disabled={isProcessing}
-                  className={`
-                    py-2 px-2 rounded-lg text-xs font-medium transition-all
-                    ${placement === value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-                    }
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                  `}
-                >
-                  {placementLabels[value].label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-gray-600 mt-1.5">
-              {placementLabels[placement].desc}
-            </p>
-          </div>
         </CollapsibleSection>
       )}
 
