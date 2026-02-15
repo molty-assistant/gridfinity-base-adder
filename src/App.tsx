@@ -160,18 +160,20 @@ function App() {
   // Ko-fi floating widget
   useEffect(() => {
     const scriptId = 'kofi-overlay-widget-script';
+    const containerId = 'kofi-sidebar-widget';
 
     const drawWidget = () => {
       if (window.__kofiOverlayInit) return;
       const overlay = window.kofiWidgetOverlay;
       if (!overlay || typeof overlay.draw !== 'function') return;
+      if (!document.getElementById(containerId)) return;
 
       overlay.draw('lightscout', {
         type: 'floating-chat',
         'floating-chat.donateButton.text': 'Support me',
         'floating-chat.donateButton.background-color': '#00b9fe',
         'floating-chat.donateButton.text-color': '#fff',
-      });
+      }, containerId);
       window.__kofiOverlayInit = true;
     };
 
@@ -646,6 +648,8 @@ function App() {
               onGenerate={handleGenerate}
               onDownload={handleDownload}
             />
+
+            <div id="kofi-sidebar-widget" className="kofi-sidebar-widget" />
           </div>
         </div>
       </div>

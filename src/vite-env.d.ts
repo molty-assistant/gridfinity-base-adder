@@ -3,7 +3,7 @@
 declare const __APP_VERSION__: string;
 
 interface KofiWidgetOverlay {
-  draw: (username: string, options: Record<string, string>) => void;
+  draw: (username: string, options: Record<string, string>, containerId?: string) => void;
 }
 
 interface Window {

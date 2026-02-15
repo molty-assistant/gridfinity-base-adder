@@ -47,3 +47,38 @@ input[type="range"]::-moz-range-thumb {
 input[type="checkbox"] {
   cursor: pointer;
 }
+
+/* Anchor Ko-fi floating-chat widget under sidebar controls */
+.kofi-sidebar-widget {
+  position: relative;
+  min-height: 65px;
+  overflow: visible;
+}
+
+.kofi-sidebar-widget > .floatingchat-container-wrap,
+.kofi-sidebar-widget > .floatingchat-container-wrap-mobi {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 65px !important;
+}
+
+.kofi-sidebar-widget .floatingchat-container,
+.kofi-sidebar-widget .floatingchat-container-mobi {
+  position: static !important;
+  width: 100% !important;
+  max-width: 195px;
+  height: 65px !important;
+}
+
+.kofi-sidebar-widget .floating-chat-kofi-popup-iframe,
+.kofi-sidebar-widget .floating-chat-kofi-popup-iframe-mobi {
+  position: absolute !important;
+  left: 0 !important;
+  bottom: 72px !important;
+  width: min(325px, calc(100vw - 2rem)) !important;
+  max-width: min(325px, calc(100vw - 2rem)) !important;
+}
