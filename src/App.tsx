@@ -116,6 +116,8 @@ function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
   }
 }
 
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
 function App() {
   const rawGeometryRef = useRef<THREE.BufferGeometry | null>(null);
 
@@ -361,8 +363,6 @@ function App() {
     combinedDataRef.current = null;
   }, [modelDims, recalcGrid, gridUnit]);
 
-  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
   const handleGridUnitChange = useCallback((unit: GridSize) => {
     setGridUnit(unit);
 
@@ -544,8 +544,8 @@ function App() {
     const buffer = exportSTL(positions, indices);
 
     const baseName = filename.replace(/\.stl$/i, '');
-    downloadSTL(buffer, `${baseName}_gridfinity_${gridX}x${gridY}.stl`);
-  }, [filename, gridX, gridY]);
+    downloadSTL(buffer, `${baseName}_gridfinity_${gridX}x${gridY}_${gridUnit}mm.stl`);
+  }, [filename, gridX, gridY, gridUnit]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">

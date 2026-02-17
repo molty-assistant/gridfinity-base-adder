@@ -42,7 +42,7 @@ export const MAGNET_OFFSET = 4.8; // mm from edge of unit to center of magnet
 
 // Screw hole dimensions (M3)
 export const SCREW_DIAMETER = 3.0; // mm (M3)
-export const SCREW_DEPTH = 6.0; // mm — through the full base height minus a thin floor
+export const SCREW_DEPTH = 6.0; // mm - through the full base height minus a thin floor
 
 // Fitting mode tolerance
 export const FIT_TOLERANCE = 2.0; // mm - if overhang ≤ this, round UP
@@ -226,6 +226,11 @@ export async function generateGridfinityBase(
   const templateBase = generateUnitBase(wasm, gridUnit);
   const unitBases: Manifold[] = [];
 
+  // At 21mm, magnet/screw holes are only placed at the 4 outer corners of the
+  // overall base (not per-cell) because per-cell holes would be too close to
+  // walls and create fragile geometry. At 42mm, per-cell placement is standard.
+  const useOuterCornersOnly = gridUnit <= 21;
+
   for (let gx = 0; gx < config.gridX; gx++) {
     for (let gy = 0; gy < config.gridY; gy++) {
       const centerX = config.offsetX + (gx - (config.gridX - 1) / 2) * gridUnit;
@@ -233,56 +238,58 @@ export async function generateGridfinityBase(
 
       let unitBase = templateBase.translate([centerX, centerY, 0]);
 
-      // Corner positions for magnet/screw holes (same positions for both)
-      const inset = MAGNET_OFFSET;
-      const corners: [number, number][] = [
-        [centerX - gridUnit / 2 + inset, centerY - gridUnit / 2 + inset],
-        [centerX + gridUnit / 2 - inset, centerY - gridUnit / 2 + inset],
-        [centerX - gridUnit / 2 + inset, centerY + gridUnit / 2 - inset],
-        [centerX + gridUnit / 2 - inset, centerY + gridUnit / 2 - inset],
-      ];
+      // Per-cell magnet/screw holes (42mm standard only)
+      if (!useOuterCornersOnly) {
+        const inset = MAGNET_OFFSET;
+        const corners: [number, number][] = [
+          [centerX - gridUnit / 2 + inset, centerY - gridUnit / 2 + inset],
+          [centerX + gridUnit / 2 - inset, centerY - gridUnit / 2 + inset],
+          [centerX - gridUnit / 2 + inset, centerY + gridUnit / 2 - inset],
+          [centerX + gridUnit / 2 - inset, centerY + gridUnit / 2 - inset],
+        ];
 
-      // Add magnet holes if requested
-      if (config.magnets) {
-        const magnetRadius = MAGNET_DIAMETER / 2;
+        // Add magnet holes if requested
+        if (config.magnets) {
+          const magnetRadius = MAGNET_DIAMETER / 2;
 
-        // IMPORTANT: do a single batch difference per unit. Repeated sequential
-        // subtract/delete can yield invalid WASM handles (“indirect call to null”)
-        // for multi-unit grids.
-        const holes = corners.map(([mx, my]) =>
-          Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
-            mx,
-            my,
-            0,
-          ])
-        );
-        const withHoles = Manifold.difference([unitBase, ...holes]);
-        unitBase.delete();
-        unitBase = withHoles;
-        holes.forEach((h) => h.delete());
-      }
-
-      // Add screw holes if requested (concentric with magnet positions)
-      if (config.screws) {
-        const screwHoles: Manifold[] = [];
-        const screwRadius = SCREW_DIAMETER / 2;
-
-        for (const [mx, my] of corners) {
-          const hole = Manifold.cylinder(
-            SCREW_DEPTH,
-            screwRadius,
-            screwRadius,
-            16
-          ).translate([mx, my, 0]);
-          screwHoles.push(hole);
+          // IMPORTANT: do a single batch difference per unit. Repeated sequential
+          // subtract/delete can yield invalid WASM handles ("indirect call to null")
+          // for multi-unit grids.
+          const holes = corners.map(([mx, my]) =>
+            Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
+              mx,
+              my,
+              0,
+            ])
+          );
+          const withHoles = Manifold.difference([unitBase, ...holes]);
+          unitBase.delete();
+          unitBase = withHoles;
+          holes.forEach((h) => h.delete());
         }
 
-        const withScrews = Manifold.difference([unitBase, ...screwHoles]);
-        unitBase.delete();
-        unitBase = withScrews;
+        // Add screw holes if requested (concentric with magnet positions)
+        if (config.screws) {
+          const screwHoles: Manifold[] = [];
+          const screwRadius = SCREW_DIAMETER / 2;
 
-        for (const h of screwHoles) {
-          h.delete();
+          for (const [mx, my] of corners) {
+            const hole = Manifold.cylinder(
+              SCREW_DEPTH,
+              screwRadius,
+              screwRadius,
+              16
+            ).translate([mx, my, 0]);
+            screwHoles.push(hole);
+          }
+
+          const withScrews = Manifold.difference([unitBase, ...screwHoles]);
+          unitBase.delete();
+          unitBase = withScrews;
+
+          for (const h of screwHoles) {
+            h.delete();
+          }
         }
       }
 
@@ -299,6 +306,46 @@ export async function generateGridfinityBase(
     profileUnion = Manifold.union(unitBases);
     for (const ub of unitBases) {
       ub.delete();
+    }
+  }
+
+  // For half-grid (21mm), place magnet/screw holes at the 4 outer corners only
+  if (useOuterCornersOnly && (config.magnets || config.screws)) {
+    const inset = MAGNET_OFFSET;
+    // Outer edges of the full grid footprint
+    const halfW = (config.gridX * gridUnit) / 2;
+    const halfD = (config.gridY * gridUnit) / 2;
+    const outerCorners: [number, number][] = [
+      [config.offsetX - halfW + inset, config.offsetY - halfD + inset],
+      [config.offsetX + halfW - inset, config.offsetY - halfD + inset],
+      [config.offsetX - halfW + inset, config.offsetY + halfD - inset],
+      [config.offsetX + halfW - inset, config.offsetY + halfD - inset],
+    ];
+
+    if (config.magnets) {
+      const magnetRadius = MAGNET_DIAMETER / 2;
+      const holes = outerCorners.map(([mx, my]) =>
+        Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
+          mx, my, 0,
+        ])
+      );
+      const withHoles = Manifold.difference([profileUnion, ...holes]);
+      profileUnion.delete();
+      profileUnion = withHoles;
+      holes.forEach((h) => h.delete());
+    }
+
+    if (config.screws) {
+      const screwRadius = SCREW_DIAMETER / 2;
+      const screwHoles = outerCorners.map(([mx, my]) =>
+        Manifold.cylinder(SCREW_DEPTH, screwRadius, screwRadius, 16).translate([
+          mx, my, 0,
+        ])
+      );
+      const withScrews = Manifold.difference([profileUnion, ...screwHoles]);
+      profileUnion.delete();
+      profileUnion = withScrews;
+      screwHoles.forEach((h) => h.delete());
     }
   }
 

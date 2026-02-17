@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-// Grid overlay uses the selected grid unit size (passed from App)
+import type { GridSize } from '../lib/gridfinity';
 import EmptyState from './EmptyState';
 import type { BasePlacement } from './Controls';
 
@@ -11,7 +11,7 @@ interface ViewportProps {
   combinedGeometry: THREE.BufferGeometry | null;
   gridX: number;
   gridY: number;
-  gridUnit: number;
+  gridUnit: GridSize;
   offsetX: number;
   offsetY: number;
   placement: BasePlacement;

@@ -100,7 +100,7 @@ export default function Controls({
       `File: ${filename}`,
       `Grid Unit: ${gridUnit}mm`,
       `Grid: ${gridX}×${gridY} (${(gridX * gridUnit).toFixed(0)}×${(gridY * gridUnit).toFixed(0)}mm)`,
-      gridUnit === GRID_UNIT_HALF && magnets ? `Note: Magnet holes are tight at 21mm grid size` : '',
+      gridUnit === GRID_UNIT_HALF && (magnets || screws) ? `Note: Holes placed at outer corners only at 21mm grid size` : '',
       `Fit Mode: ${fitModeLabels[fitMode].label}`,
       `Orientation: ${orientation}`,
       `Base Side: ${placementLabels[placement].label}`,
@@ -424,9 +424,9 @@ export default function Controls({
               </div>
             </label>
 
-            {magnets && gridUnit === GRID_UNIT_HALF && (
+            {(magnets || screws) && gridUnit === GRID_UNIT_HALF && (
               <div className="px-2.5 -mt-1 text-[10px] text-yellow-400/70">
-                Magnet holes are tight at 21mm grid size.
+                Holes placed at outer corners only at 21mm grid size.
               </div>
             )}
 
