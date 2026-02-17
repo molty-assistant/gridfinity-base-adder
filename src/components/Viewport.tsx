@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GRID_UNIT } from '../lib/gridfinity';
+import type { GridSize } from '../lib/gridfinity';
 import EmptyState from './EmptyState';
 import type { BasePlacement } from './Controls';
 
@@ -11,6 +11,7 @@ interface ViewportProps {
   combinedGeometry: THREE.BufferGeometry | null;
   gridX: number;
   gridY: number;
+  gridUnit: GridSize;
   offsetX: number;
   offsetY: number;
   placement: BasePlacement;
@@ -22,6 +23,7 @@ export default function Viewport({
   combinedGeometry,
   gridX,
   gridY,
+  gridUnit,
   offsetX,
   offsetY,
   placement,
@@ -164,8 +166,8 @@ export default function Viewport({
       state.scene.remove(state.bgGrid);
       state.bgGrid.dispose();
     }
-    const gridSize = Math.ceil(maxDim * 2 / 42) * 42;
-    const gridDivisions = Math.ceil(gridSize / 42);
+    const gridSize = Math.ceil((maxDim * 2) / gridUnit) * gridUnit;
+    const gridDivisions = Math.ceil(gridSize / gridUnit);
     const newGrid = new THREE.GridHelper(
       gridSize,
       gridDivisions,
@@ -176,7 +178,7 @@ export default function Viewport({
     newGrid.position.set(center.x, center.y, 0);
     state.scene.add(newGrid);
     state.bgGrid = newGrid;
-  }, []);
+  }, [gridUnit]);
 
   // Build grid overlay showing active cells
   const buildGridOverlay = useCallback((gx: number, gy: number, ox: number, oy: number): THREE.Group => {
@@ -185,11 +187,11 @@ export default function Viewport({
     // Draw active cells as filled translucent quads
     for (let ix = 0; ix < gx; ix++) {
       for (let iy = 0; iy < gy; iy++) {
-        const cx = ox + (ix - (gx - 1) / 2) * GRID_UNIT;
-        const cy = oy + (iy - (gy - 1) / 2) * GRID_UNIT;
+        const cx = ox + (ix - (gx - 1) / 2) * gridUnit;
+        const cy = oy + (iy - (gy - 1) / 2) * gridUnit;
 
         // Filled cell
-        const cellGeom = new THREE.PlaneGeometry(GRID_UNIT - 1, GRID_UNIT - 1);
+        const cellGeom = new THREE.PlaneGeometry(gridUnit - 1, gridUnit - 1);
         const cellMat = new THREE.MeshBasicMaterial({
           color: 0x22cc66,
           transparent: true,
@@ -203,11 +205,11 @@ export default function Viewport({
 
         // Cell border
         const borderPoints = [
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
-          new THREE.Vector3(cx + GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
-          new THREE.Vector3(cx + GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.1),
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.1),
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.1),
+          new THREE.Vector3(cx - gridUnit / 2, cy - gridUnit / 2, 0.1),
+          new THREE.Vector3(cx + gridUnit / 2, cy - gridUnit / 2, 0.1),
+          new THREE.Vector3(cx + gridUnit / 2, cy + gridUnit / 2, 0.1),
+          new THREE.Vector3(cx - gridUnit / 2, cy + gridUnit / 2, 0.1),
+          new THREE.Vector3(cx - gridUnit / 2, cy - gridUnit / 2, 0.1),
         ];
         const borderGeom = new THREE.BufferGeometry().setFromPoints(borderPoints);
         const borderMat = new THREE.LineBasicMaterial({
@@ -227,15 +229,15 @@ export default function Viewport({
         // Skip active cells
         if (ix >= 0 && ix < gx && iy >= 0 && iy < gy) continue;
 
-        const cx = ox + (ix - (gx - 1) / 2) * GRID_UNIT;
-        const cy = oy + (iy - (gy - 1) / 2) * GRID_UNIT;
+        const cx = ox + (ix - (gx - 1) / 2) * gridUnit;
+        const cy = oy + (iy - (gy - 1) / 2) * gridUnit;
 
         const borderPoints = [
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
-          new THREE.Vector3(cx + GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
-          new THREE.Vector3(cx + GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.05),
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy + GRID_UNIT / 2, 0.05),
-          new THREE.Vector3(cx - GRID_UNIT / 2, cy - GRID_UNIT / 2, 0.05),
+          new THREE.Vector3(cx - gridUnit / 2, cy - gridUnit / 2, 0.05),
+          new THREE.Vector3(cx + gridUnit / 2, cy - gridUnit / 2, 0.05),
+          new THREE.Vector3(cx + gridUnit / 2, cy + gridUnit / 2, 0.05),
+          new THREE.Vector3(cx - gridUnit / 2, cy + gridUnit / 2, 0.05),
+          new THREE.Vector3(cx - gridUnit / 2, cy - gridUnit / 2, 0.05),
         ];
         const borderGeom = new THREE.BufferGeometry().setFromPoints(borderPoints);
         const borderMat = new THREE.LineDashedMaterial({
@@ -252,7 +254,7 @@ export default function Viewport({
     }
 
     return group;
-  }, []);
+  }, [gridUnit]);
 
   // Update grid overlay when params change
   useEffect(() => {
