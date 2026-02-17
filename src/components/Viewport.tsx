@@ -178,7 +178,7 @@ export default function Viewport({
     newGrid.position.set(center.x, center.y, 0);
     state.scene.add(newGrid);
     state.bgGrid = newGrid;
-  }, []);
+  }, [gridUnit]);
 
   // Build grid overlay showing active cells
   const buildGridOverlay = useCallback((gx: number, gy: number, ox: number, oy: number): THREE.Group => {
@@ -254,7 +254,7 @@ export default function Viewport({
     }
 
     return group;
-  }, []);
+  }, [gridUnit]);
 
   // Update grid overlay when params change
   useEffect(() => {
