@@ -18,9 +18,11 @@ import * as THREE from 'three';
  */
 
 // Gridfinity dimensions (mm)
-export const GRID_UNIT = 42; // mm per grid unit
+export const GRID_UNIT = 42; // mm per grid unit (standard)
+export const GRID_UNIT_HALF = 21; // mm per grid unit (half-grid)
+export type GridSize = 42 | 21;
+
 export const CLEARANCE = 0.25; // mm clearance from grid boundary
-export const BASE_UNIT = GRID_UNIT - 2 * CLEARANCE; // actual base size per unit
 
 // Base profile dimensions
 export const CHAMFER_SMALL = 0.8; // mm - bottom chamfer
@@ -50,6 +52,7 @@ export type FitMode = 'inside' | 'outside' | 'custom';
 export interface GridfinityConfig {
   gridX: number; // number of grid units in X
   gridY: number; // number of grid units in Y
+  gridUnit: GridSize; // grid unit pitch (42mm standard, 21mm half-grid)
   offsetX: number; // X offset in mm
   offsetY: number; // Y offset in mm
   magnets: boolean; // include magnet holes
@@ -63,24 +66,25 @@ export interface GridfinityConfig {
 export function calculateGridUnits(
   widthX: number,
   widthY: number,
-  mode: FitMode = 'inside'
+  mode: FitMode = 'inside',
+  gridUnit: GridSize = GRID_UNIT
 ): { gridX: number; gridY: number } {
   if (mode === 'outside') {
     return {
-      gridX: Math.max(1, Math.ceil(widthX / GRID_UNIT)),
-      gridY: Math.max(1, Math.ceil(widthY / GRID_UNIT)),
+      gridX: Math.max(1, Math.ceil(widthX / gridUnit)),
+      gridY: Math.max(1, Math.ceil(widthY / gridUnit)),
     };
   }
 
   // "inside" mode with tolerance
-  const rawX = widthX / GRID_UNIT;
-  const rawY = widthY / GRID_UNIT;
+  const rawX = widthX / gridUnit;
+  const rawY = widthY / gridUnit;
 
   // If overhang per side is small enough, round up
   const floorX = Math.floor(rawX);
   const floorY = Math.floor(rawY);
-  const overhangX = ((rawX - floorX) * GRID_UNIT) / 2; // per side
-  const overhangY = ((rawY - floorY) * GRID_UNIT) / 2;
+  const overhangX = ((rawX - floorX) * gridUnit) / 2; // per side
+  const overhangY = ((rawY - floorY) * gridUnit) / 2;
 
   const gridX =
     overhangX > 0 && overhangX <= FIT_TOLERANCE ? floorX + 1 : Math.max(1, floorX);
@@ -135,8 +139,10 @@ function roundedRectPoints(
  * Generate one unit base at the origin using the hull approach.
  * Hulls thin slabs at different Z heights to create clean chamfer geometry.
  */
-function generateUnitBase(wasm: ManifoldToplevel): Manifold {
+function generateUnitBase(wasm: ManifoldToplevel, gridUnit: GridSize): Manifold {
   const { CrossSection, Manifold } = wasm;
+
+  const baseUnit = gridUnit - 2 * CLEARANCE;
 
   // manifold-3d@3.3.2 exposes static helpers after wasm.setup(), including:
   // - Manifold.hull([a, b])
@@ -145,9 +151,9 @@ function generateUnitBase(wasm: ManifoldToplevel): Manifold {
   // Using batch statics is also more stable than repeated chained instance ops.
 
   // Profile widths at each Z level (base widens from bottom to top)
-  const w_bottom = BASE_UNIT - 2 * (CHAMFER_SMALL + CHAMFER_LARGE); // ~35.6mm
-  const w_mid = BASE_UNIT - 2 * CHAMFER_LARGE; // ~37.2mm
-  const w_top = BASE_UNIT; // 41.5mm
+  const w_bottom = baseUnit - 2 * (CHAMFER_SMALL + CHAMFER_LARGE);
+  const w_mid = baseUnit - 2 * CHAMFER_LARGE;
+  const w_top = baseUnit;
 
   // Absolute offset corner radii (inset from outer radius)
   const totalInset_bottom = CHAMFER_SMALL + CHAMFER_LARGE; // 2.95mm
@@ -214,24 +220,26 @@ export async function generateGridfinityBase(
 
   wasm.setCircularSegments(32);
 
+  const gridUnit = config.gridUnit;
+
   // Build one template base at origin
-  const templateBase = generateUnitBase(wasm);
+  const templateBase = generateUnitBase(wasm, gridUnit);
   const unitBases: Manifold[] = [];
 
   for (let gx = 0; gx < config.gridX; gx++) {
     for (let gy = 0; gy < config.gridY; gy++) {
-      const centerX = config.offsetX + (gx - (config.gridX - 1) / 2) * GRID_UNIT;
-      const centerY = config.offsetY + (gy - (config.gridY - 1) / 2) * GRID_UNIT;
+      const centerX = config.offsetX + (gx - (config.gridX - 1) / 2) * gridUnit;
+      const centerY = config.offsetY + (gy - (config.gridY - 1) / 2) * gridUnit;
 
       let unitBase = templateBase.translate([centerX, centerY, 0]);
 
       // Corner positions for magnet/screw holes (same positions for both)
       const inset = MAGNET_OFFSET;
       const corners: [number, number][] = [
-        [centerX - GRID_UNIT / 2 + inset, centerY - GRID_UNIT / 2 + inset],
-        [centerX + GRID_UNIT / 2 - inset, centerY - GRID_UNIT / 2 + inset],
-        [centerX - GRID_UNIT / 2 + inset, centerY + GRID_UNIT / 2 - inset],
-        [centerX + GRID_UNIT / 2 - inset, centerY + GRID_UNIT / 2 - inset],
+        [centerX - gridUnit / 2 + inset, centerY - gridUnit / 2 + inset],
+        [centerX + gridUnit / 2 - inset, centerY - gridUnit / 2 + inset],
+        [centerX - gridUnit / 2 + inset, centerY + gridUnit / 2 - inset],
+        [centerX + gridUnit / 2 - inset, centerY + gridUnit / 2 - inset],
       ];
 
       // Add magnet holes if requested
@@ -295,8 +303,8 @@ export async function generateGridfinityBase(
   }
 
   // Generate the bridge platform that spans the full multi-unit footprint
-  const bridgeWidth = config.gridX * GRID_UNIT - 2 * CLEARANCE;
-  const bridgeDepth = config.gridY * GRID_UNIT - 2 * CLEARANCE;
+  const bridgeWidth = config.gridX * gridUnit - 2 * CLEARANCE;
+  const bridgeDepth = config.gridY * gridUnit - 2 * CLEARANCE;
   const { CrossSection } = wasm;
   const bridgeCS = new CrossSection([
     roundedRectPoints(bridgeWidth, bridgeDepth, CORNER_RADIUS),

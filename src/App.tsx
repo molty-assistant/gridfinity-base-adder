@@ -15,8 +15,9 @@ import {
   geometryToManifoldMesh,
   manifoldMeshToArrays,
   BASE_HEIGHT,
+  GRID_UNIT,
 } from './lib/gridfinity';
-import type { FitMode } from './lib/gridfinity';
+import type { FitMode, GridSize } from './lib/gridfinity';
 
 interface ModelDims {
   width: number;
@@ -130,6 +131,7 @@ function App() {
 
   const [gridX, setGridX] = useState(1);
   const [gridY, setGridY] = useState(1);
+  const [gridUnit, setGridUnit] = useState<GridSize>(GRID_UNIT);
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [magnets, setMagnets] = useState(true);
@@ -229,9 +231,9 @@ function App() {
     };
   }, []);
 
-  const recalcGrid = useCallback((dims: ModelDims, mode: FitMode) => {
+  const recalcGrid = useCallback((dims: ModelDims, mode: FitMode, unit: GridSize) => {
     if (mode === 'custom') return;
-    const units = calculateGridUnits(dims.width, dims.depth, mode);
+    const units = calculateGridUnits(dims.width, dims.depth, mode, unit);
     setGridX(units.gridX);
     setGridY(units.gridY);
   }, []);
@@ -262,7 +264,7 @@ function App() {
         setModelDims(dims);
         setFilename(name);
 
-        const units = calculateGridUnits(dims.width, dims.depth, fitMode);
+        const units = calculateGridUnits(dims.width, dims.depth, fitMode, gridUnit);
         setGridX(units.gridX);
         setGridY(units.gridY);
         setPlacement('outside');
@@ -284,7 +286,7 @@ function App() {
         setError(`Failed to parse STL file: ${getErrorMessage(err)}`);
       }
     },
-    [applyOrientation, orientation, fitMode]
+    [applyOrientation, orientation, fitMode, gridUnit]
   );
 
   // Handle removing the file
@@ -325,7 +327,7 @@ function App() {
     setModelDims(dims);
 
     // Recalculate grid for new orientation (preserves custom mode values)
-    recalcGrid(dims, fitMode);
+    recalcGrid(dims, fitMode, gridUnit);
 
     // Reset results
     setBaseGeometry((prev) => {
@@ -339,13 +341,13 @@ function App() {
     combinedDataRef.current = null;
     setOffsetX(0);
     setOffsetY(0);
-  }, [applyOrientation, fitMode, recalcGrid]);
+  }, [applyOrientation, fitMode, recalcGrid, gridUnit]);
 
   // Handle fit mode change
   const handleFitModeChange = useCallback((mode: FitMode) => {
     setFitMode(mode);
     if (modelDims) {
-      recalcGrid(modelDims, mode);
+      recalcGrid(modelDims, mode, gridUnit);
     }
     // Reset results
     setBaseGeometry((prev) => {
@@ -357,7 +359,33 @@ function App() {
       return null;
     });
     combinedDataRef.current = null;
-  }, [modelDims, recalcGrid]);
+  }, [modelDims, recalcGrid, gridUnit]);
+
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+  const handleGridUnitChange = useCallback((unit: GridSize) => {
+    setGridUnit(unit);
+
+    // Keep offsets within ±gridUnit/2
+    const range = unit / 2;
+    setOffsetX((prev) => clamp(prev, -range, range));
+    setOffsetY((prev) => clamp(prev, -range, range));
+
+    if (modelDims) {
+      recalcGrid(modelDims, fitMode, unit);
+    }
+
+    // Reset results
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    combinedDataRef.current = null;
+  }, [modelDims, fitMode, recalcGrid]);
 
   const handlePlacementChange = useCallback((value: BasePlacement) => {
     setPlacement(value);
@@ -398,6 +426,7 @@ function App() {
       const config = {
         gridX,
         gridY,
+        gridUnit,
         offsetX,
         offsetY,
         magnets,
@@ -505,7 +534,7 @@ function App() {
       baseManifold?.delete();
       setIsProcessing(false);
     }
-  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws, placement]);
+  }, [originalGeometry, wasmReady, gridX, gridY, gridUnit, offsetX, offsetY, magnets, screws, placement]);
 
   // Download the combined STL
   const handleDownload = useCallback(() => {
@@ -567,6 +596,7 @@ function App() {
                 combinedGeometry={combinedGeometry}
                 gridX={gridX}
                 gridY={gridY}
+                gridUnit={gridUnit}
                 offsetX={offsetX}
                 offsetY={offsetY}
                 placement={placement}
@@ -625,6 +655,7 @@ function App() {
               gridY={gridY}
               offsetX={offsetX}
               offsetY={offsetY}
+              gridUnit={gridUnit}
               magnets={magnets}
               screws={screws}
               fitMode={fitMode}
@@ -640,6 +671,7 @@ function App() {
               onGridYChange={setGridY}
               onOffsetXChange={setOffsetX}
               onOffsetYChange={setOffsetY}
+              onGridUnitChange={handleGridUnitChange}
               onMagnetsChange={setMagnets}
               onScrewsChange={setScrews}
               onFitModeChange={handleFitModeChange}
