@@ -38,6 +38,9 @@ interface MeshArrays {
   indices: Uint32Array;
 }
 
+const INVALID_STL_MESH_ERROR =
+  'This STL could not be processed into a valid mesh. The file may be non-manifold or corrupt. Please export a clean manifold STL and try again.';
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
@@ -285,7 +288,7 @@ function App() {
         setOffsetY(0);
       } catch (err: unknown) {
         console.error('Failed to parse STL:', err);
-        setError(`Failed to parse STL file: ${getErrorMessage(err)}`);
+        setError(INVALID_STL_MESH_ERROR);
       }
     },
     [applyOrientation, orientation, fitMode, gridUnit]
@@ -457,9 +460,8 @@ function App() {
         shiftedGeometry.translate(0, 0, BASE_HEIGHT);
       }
 
-      const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
-
       try {
+        const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
         modelManifold = new wasm.Manifold(modelMesh);
       } catch (meshErr: unknown) {
         console.warn(
@@ -482,7 +484,7 @@ function App() {
         setCombinedGeometry(fallbackGeo);
         combinedDataRef.current = fallbackArrays;
         setError(
-          'Boolean union failed on this STL, so compatibility mode was used (model + base exported together as overlapping solids). Most slicers merge these automatically.'
+          `${INVALID_STL_MESH_ERROR} Compatibility mode was used (model + base exported together as overlapping solids). Most slicers merge these automatically.`
         );
         setToast({
           message: '⚠️ Used compatibility mode for this STL',
