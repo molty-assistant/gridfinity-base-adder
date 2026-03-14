@@ -6,6 +6,7 @@ import FileInfoBar from './components/FileInfoBar';
 import Viewport from './components/Viewport';
 import Controls from './components/Controls';
 import Toast from './components/Toast';
+import LandingPage from './components/LandingPage';
 import type { BasePlacement, OrientationAxis } from './components/Controls';
 import { parseSTL, getModelDimensions, exportSTL, downloadSTL } from './lib/stl';
 import { initManifold } from './lib/manifold';
@@ -581,7 +582,7 @@ function App() {
   }, [filename, gridX, gridY]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
+    <LandingPage wasmReady={wasmReady} appVersion={__APP_VERSION__}>
       {/* Toast notifications */}
       {toast && (
         <Toast
@@ -591,134 +592,112 @@ function App() {
         />
       )}
 
-      {/* Header */}
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="text-xl">🔲</div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-100">
-              Gridfinity Base Adder
-            </h1>
-            <p className="text-xs text-gray-500 hidden sm:block">
-              Add Gridfinity-compatible bases to any STL model
-            </p>
+      <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/50 shadow-2xl shadow-black/30">
+        {/* Mobile layout: sidebar (upload + controls) first, viewport second */}
+        {/* Desktop layout: viewport (left) + sidebar (right), upload in sidebar top */}
+        <div className="flex flex-col lg:min-h-[740px] lg:flex-row">
+
+          {/* Left side: Viewport */}
+          <div className="order-2 flex min-h-[420px] flex-1 flex-col lg:order-1 lg:min-h-0">
+            <div className="flex-1 p-3 sm:p-4">
+              <div className="h-full min-h-[360px] overflow-hidden rounded-xl border border-gray-800">
+                <Viewport
+                  originalGeometry={originalGeometry}
+                  baseGeometry={baseGeometry}
+                  combinedGeometry={combinedGeometry}
+                  gridX={gridX}
+                  gridY={gridY}
+                  offsetX={offsetX}
+                  offsetY={offsetY}
+                  placement={placement}
+                  activeCells={activeCells}
+                />
+              </div>
+            </div>
           </div>
-          <span className="ml-auto text-[10px] font-mono text-gray-500 border border-gray-700 rounded px-2 py-0.5">
-            v{__APP_VERSION__}
-          </span>
-          {!wasmReady && (
-            <span className="text-xs text-yellow-500 animate-pulse">
-              Loading engine…
-            </span>
-          )}
-        </div>
-      </header>
 
-      {/* Mobile layout: sidebar (upload + controls) first, viewport second */}
-      {/* Desktop layout: viewport (left) + sidebar (right), upload in sidebar top */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+          {/* Sidebar / Controls */}
+          <div className="order-1 max-h-[740px] w-full overflow-y-auto border-b border-gray-800 lg:order-2 lg:w-80 lg:border-b-0 lg:border-l xl:w-96">
+            <div className="space-y-3 p-3 lg:p-4">
 
-        {/* Left side: Viewport */}
-        <div className="order-2 lg:order-1 flex-1 flex flex-col min-h-0">
-          {/* Viewport */}
-          <div className="flex-1 p-3 min-h-0">
-            <div className="h-full rounded-xl border border-gray-800 overflow-hidden">
-              <Viewport
-                originalGeometry={originalGeometry}
-                baseGeometry={baseGeometry}
-                combinedGeometry={combinedGeometry}
+              {/* File upload — always top of sidebar */}
+              <div>
+                {filename ? (
+                  <FileInfoBar
+                    filename={filename}
+                    triangleCount={triangleCount}
+                    dimensions={modelDims}
+                    onRemove={handleRemoveFile}
+                  />
+                ) : (
+                  <FileUpload
+                    onFileLoaded={handleFileLoaded}
+                    disabled={!wasmReady || isProcessing}
+                  />
+                )}
+              </div>
+
+              {/* Processing indicator */}
+              {isProcessing && (
+                <div className="flex items-center gap-3 rounded-xl border border-blue-700/30 bg-blue-950/30 p-3">
+                  <div className="relative h-8 w-8 shrink-0">
+                    <svg className="h-8 w-8 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-blue-300">Generating base…</div>
+                    <div className="text-xs text-blue-400/60">Boolean union in progress</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="rounded-xl border border-red-800 bg-red-950/50 p-3 text-xs text-red-300">
+                  {error}
+                </div>
+              )}
+
+              {/* Controls */}
+              <Controls
                 gridX={gridX}
                 gridY={gridY}
                 offsetX={offsetX}
                 offsetY={offsetY}
+                magnets={magnets}
+                screws={screws}
+                fitMode={fitMode}
+                orientation={orientation}
                 placement={placement}
+                modelDims={modelDims}
+                hasModel={!!originalGeometry}
+                hasBase={!!baseGeometry}
+                hasCombined={!!combinedGeometry}
+                isProcessing={isProcessing}
+                filename={filename}
                 activeCells={activeCells}
+                onGridXChange={handleGridXChange}
+                onGridYChange={handleGridYChange}
+                onOffsetXChange={setOffsetX}
+                onOffsetYChange={setOffsetY}
+                onMagnetsChange={setMagnets}
+                onScrewsChange={setScrews}
+                onFitModeChange={handleFitModeChange}
+                onOrientationChange={handleOrientationChange}
+                onPlacementChange={handlePlacementChange}
+                onGenerate={handleGenerate}
+                onDownload={handleDownload}
+                onToggleCell={handleToggleCell}
               />
+
+              <div id="kofi-sidebar-widget" className="kofi-sidebar-widget" />
             </div>
-          </div>
-        </div>
-
-        {/* Sidebar / Controls */}
-        <div className="order-1 lg:order-2 w-full lg:w-80 xl:w-96 border-b lg:border-b-0 lg:border-l border-gray-800 overflow-y-auto">
-          <div className="p-3 lg:p-4 space-y-3">
-
-            {/* File upload — always top of sidebar */}
-            <div>
-              {filename ? (
-                <FileInfoBar
-                  filename={filename}
-                  triangleCount={triangleCount}
-                  dimensions={modelDims}
-                  onRemove={handleRemoveFile}
-                />
-              ) : (
-                <FileUpload
-                  onFileLoaded={handleFileLoaded}
-                  disabled={!wasmReady || isProcessing}
-                />
-              )}
-            </div>
-
-            {/* Processing indicator */}
-            {isProcessing && (
-              <div className="bg-blue-950/30 border border-blue-700/30 rounded-xl p-3 flex items-center gap-3">
-                <div className="relative w-8 h-8 shrink-0">
-                  <svg className="animate-spin w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-blue-300">Generating base…</div>
-                  <div className="text-xs text-blue-400/60">Boolean union in progress</div>
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-xs text-red-300">
-                {error}
-              </div>
-            )}
-
-            {/* Controls */}
-            <Controls
-              gridX={gridX}
-              gridY={gridY}
-              offsetX={offsetX}
-              offsetY={offsetY}
-              magnets={magnets}
-              screws={screws}
-              fitMode={fitMode}
-              orientation={orientation}
-              placement={placement}
-              modelDims={modelDims}
-              hasModel={!!originalGeometry}
-              hasBase={!!baseGeometry}
-              hasCombined={!!combinedGeometry}
-              isProcessing={isProcessing}
-              filename={filename}
-              activeCells={activeCells}
-              onGridXChange={handleGridXChange}
-              onGridYChange={handleGridYChange}
-              onOffsetXChange={setOffsetX}
-              onOffsetYChange={setOffsetY}
-              onMagnetsChange={setMagnets}
-              onScrewsChange={setScrews}
-              onFitModeChange={handleFitModeChange}
-              onOrientationChange={handleOrientationChange}
-              onPlacementChange={handlePlacementChange}
-              onGenerate={handleGenerate}
-              onDownload={handleDownload}
-              onToggleCell={handleToggleCell}
-            />
-
-            <div id="kofi-sidebar-widget" className="kofi-sidebar-widget" />
           </div>
         </div>
       </div>
-    </div>
+    </LandingPage>
   );
 }
 

@@ -1,30 +1,31 @@
 <!doctype html>
-<html lang="en-GB">
+<html lang="en-US">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔲</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gridfinity Base Adder — Add bases to any STL</title>
-    <meta name="description" content="Free browser tool to add Gridfinity-compatible bases to any STL model. Spec-compliant 7mm bases, magnet holes, auto-detect footprint. No install needed." />
+    <title>Gridfinity Base Adder | Convert Any STL to a Gridfinity-Compatible Base Online</title>
+    <meta name="description" content="Free online Gridfinity base adder for STL files. Convert holders, trays, and organizers into Gridfinity-compatible models with auto-fit 42mm grid sizing, 7mm spec-aligned bases, optional magnet and screw holes, live 3D preview, and instant STL download." />
+    <meta name="keywords" content="gridfinity base adder, gridfinity converter, STL to gridfinity, gridfinity base generator, gridfinity STL tool, 3D printing organizer, magnet holes, 42mm grid" />
     <link rel="canonical" href="https://molty-assistant.github.io/gridfinity-base-adder/" />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Gridfinity Base Adder — Add bases to any STL" />
-    <meta property="og:description" content="Free browser tool to add Gridfinity-compatible bases to any STL model. Spec-compliant, magnet holes, 3D preview. No install needed." />
+    <meta property="og:title" content="Gridfinity Base Adder | Convert Any STL to a Gridfinity-Compatible Base Online" />
+    <meta property="og:description" content="Add Gridfinity bases to existing STL models in your browser. Auto-fit sizing, 7mm spec-aligned geometry, optional magnet/screw holes, and ready-to-print STL export." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://molty-assistant.github.io/gridfinity-base-adder/" />
-    <meta property="og:locale" content="en_GB" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Micro Apps" />
     <meta property="og:image" content="https://molty-assistant.github.io/gridfinity-base-adder/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Gridfinity Base Adder — Add spec-compliant Gridfinity bases to any STL model" />
+    <meta property="og:image:alt" content="Gridfinity Base Adder converts existing STL files into Gridfinity-compatible models with spec-aligned bases" />
 
     <!-- Twitter/X Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://molty-assistant.github.io/gridfinity-base-adder/og-image.png" />
-    <meta name="twitter:title" content="Gridfinity Base Adder — Add bases to any STL" />
-    <meta name="twitter:description" content="Free browser tool to add Gridfinity bases to any STL. Spec-compliant, no install needed." />
+    <meta name="twitter:title" content="Gridfinity Base Adder | Convert STL Models for Gridfinity" />
+    <meta name="twitter:description" content="Free browser tool to add Gridfinity-compatible bases to existing STL files with auto-fit sizing, magnet options, and STL export." />
 
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -32,23 +33,70 @@
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "Gridfinity Base Adder",
-      "description": "Free browser tool to add Gridfinity-compatible bases to any STL model. Spec-compliant 7mm bases, magnet holes, auto-detect footprint. No install needed.",
+      "description": "Free online Gridfinity base adder for existing STL files. Auto-fit 42mm grid sizing, 7mm spec-aligned bases, optional magnet and screw holes, and instant STL download.",
       "url": "https://molty-assistant.github.io/gridfinity-base-adder/",
       "applicationCategory": "DesignApplication",
       "operatingSystem": "Any (Web Browser)",
       "offers": {
         "@type": "Offer",
         "price": "0",
-        "priceCurrency": "GBP"
+        "priceCurrency": "USD"
       },
       "author": {
         "@type": "Organization",
         "name": "Micro Apps",
         "url": "https://molty-assistant.github.io/micro-apps-site/"
       },
+      "featureList": [
+        "Convert existing STL files to Gridfinity-compatible models",
+        "Auto-fit 42mm grid sizing",
+        "7mm spec-aligned Gridfinity base geometry",
+        "Optional magnet and screw holes",
+        "Live 3D preview and STL export"
+      ],
       "browserRequirements": "Requires JavaScript and WebAssembly",
       "softwareVersion": "1.0",
-      "inLanguage": "en-GB"
+      "inLanguage": "en-US"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does this upload my STL to a server?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. STL parsing and base generation run locally in your browser."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use both magnets and screws?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The screw hole is concentric with the magnet hole so both options can be enabled together."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if boolean union fails on my model?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The app can export a compatibility-mode STL with overlapping solids that many slicers merge automatically."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What models work best?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Watertight manifold meshes work best. Repair non-manifold models before converting."
+          }
+        }
+      ]
     }
     </script>
     <!-- Analytics (GoatCounter — privacy-friendly, no cookies) -->
