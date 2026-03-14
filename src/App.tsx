@@ -15,9 +15,8 @@ import {
   geometryToManifoldMesh,
   manifoldMeshToArrays,
   BASE_HEIGHT,
-  GRID_UNIT,
 } from './lib/gridfinity';
-import type { FitMode, GridSize } from './lib/gridfinity';
+import type { FitMode } from './lib/gridfinity';
 
 interface ModelDims {
   width: number;
@@ -37,9 +36,6 @@ interface MeshArrays {
   positions: Float32Array;
   indices: Uint32Array;
 }
-
-const INVALID_STL_MESH_ERROR =
-  'This STL could not be processed into a valid mesh. The file may be non-manifold or corrupt. Please export a clean manifold STL and try again.';
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -119,8 +115,6 @@ function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
   }
 }
 
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
 function App() {
   const rawGeometryRef = useRef<THREE.BufferGeometry | null>(null);
 
@@ -136,11 +130,11 @@ function App() {
 
   const [gridX, setGridX] = useState(1);
   const [gridY, setGridY] = useState(1);
-  const [gridUnit, setGridUnit] = useState<GridSize>(GRID_UNIT);
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [magnets, setMagnets] = useState(true);
   const [screws, setScrews] = useState(false);
+  const [activeCells, setActiveCells] = useState<Set<string>>(new Set());
   const [fitMode, setFitMode] = useState<FitMode>('inside');
   const [orientation, setOrientation] = useState<OrientationAxis>('-z');
   const [placement, setPlacement] = useState<BasePlacement>('outside');
@@ -236,9 +230,9 @@ function App() {
     };
   }, []);
 
-  const recalcGrid = useCallback((dims: ModelDims, mode: FitMode, unit: GridSize) => {
+  const recalcGrid = useCallback((dims: ModelDims, mode: FitMode) => {
     if (mode === 'custom') return;
-    const units = calculateGridUnits(dims.width, dims.depth, mode, unit);
+    const units = calculateGridUnits(dims.width, dims.depth, mode);
     setGridX(units.gridX);
     setGridY(units.gridY);
   }, []);
@@ -269,10 +263,11 @@ function App() {
         setModelDims(dims);
         setFilename(name);
 
-        const units = calculateGridUnits(dims.width, dims.depth, fitMode, gridUnit);
+        const units = calculateGridUnits(dims.width, dims.depth, fitMode);
         setGridX(units.gridX);
         setGridY(units.gridY);
         setPlacement('outside');
+        setActiveCells(new Set());
 
         // Reset previous results
         setBaseGeometry((prev) => {
@@ -288,10 +283,10 @@ function App() {
         setOffsetY(0);
       } catch (err: unknown) {
         console.error('Failed to parse STL:', err);
-        setError(INVALID_STL_MESH_ERROR);
+        setError(`Failed to parse STL file: ${getErrorMessage(err)}`);
       }
     },
-    [applyOrientation, orientation, fitMode, gridUnit]
+    [applyOrientation, orientation, fitMode]
   );
 
   // Handle removing the file
@@ -315,6 +310,7 @@ function App() {
     setOffsetY(0);
     setOrientation('-z');
     setPlacement('outside');
+    setActiveCells(new Set());
     setError(null);
   }, [originalGeometry, baseGeometry, combinedGeometry]);
 
@@ -332,7 +328,7 @@ function App() {
     setModelDims(dims);
 
     // Recalculate grid for new orientation (preserves custom mode values)
-    recalcGrid(dims, fitMode, gridUnit);
+    recalcGrid(dims, fitMode);
 
     // Reset results
     setBaseGeometry((prev) => {
@@ -346,15 +342,15 @@ function App() {
     combinedDataRef.current = null;
     setOffsetX(0);
     setOffsetY(0);
-  }, [applyOrientation, fitMode, recalcGrid, gridUnit]);
+  }, [applyOrientation, fitMode, recalcGrid]);
 
   // Handle fit mode change
   const handleFitModeChange = useCallback((mode: FitMode) => {
     setFitMode(mode);
     if (modelDims) {
-      recalcGrid(modelDims, mode, gridUnit);
+      recalcGrid(modelDims, mode);
     }
-    // Reset results
+    // Reset results and active cells
     setBaseGeometry((prev) => {
       prev?.dispose();
       return null;
@@ -364,21 +360,22 @@ function App() {
       return null;
     });
     combinedDataRef.current = null;
-  }, [modelDims, recalcGrid, gridUnit]);
+    setActiveCells(new Set());
+  }, [modelDims, recalcGrid]);
 
-  const handleGridUnitChange = useCallback((unit: GridSize) => {
-    setGridUnit(unit);
-
-    // Keep offsets within ±gridUnit/2
-    const range = unit / 2;
-    setOffsetX((prev) => clamp(prev, -range, range));
-    setOffsetY((prev) => clamp(prev, -range, range));
-
-    if (modelDims) {
-      recalcGrid(modelDims, fitMode, unit);
-    }
-
-    // Reset results
+  // Handle toggling individual grid cells (for custom mode)
+  const handleToggleCell = useCallback((x: number, y: number) => {
+    setActiveCells((prev) => {
+      const next = new Set(prev);
+      const key = `${x},${y}`;
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    // Reset geometry when cells change
     setBaseGeometry((prev) => {
       prev?.dispose();
       return null;
@@ -388,7 +385,40 @@ function App() {
       return null;
     });
     combinedDataRef.current = null;
-  }, [modelDims, fitMode, recalcGrid]);
+  }, []);
+
+  // Reset active cells when grid dimensions change in custom mode
+  const handleGridXChange = useCallback((value: number) => {
+    setGridX(value);
+    if (fitMode === 'custom') {
+      setActiveCells(new Set());
+    }
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    combinedDataRef.current = null;
+  }, [fitMode]);
+
+  const handleGridYChange = useCallback((value: number) => {
+    setGridY(value);
+    if (fitMode === 'custom') {
+      setActiveCells(new Set());
+    }
+    setBaseGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    setCombinedGeometry((prev) => {
+      prev?.dispose();
+      return null;
+    });
+    combinedDataRef.current = null;
+  }, [fitMode]);
 
   const handlePlacementChange = useCallback((value: BasePlacement) => {
     setPlacement(value);
@@ -429,11 +459,11 @@ function App() {
       const config = {
         gridX,
         gridY,
-        gridUnit,
         offsetX,
         offsetY,
         magnets,
         screws,
+        activeCells: fitMode === 'custom' && activeCells.size > 0 ? activeCells : undefined,
       };
 
       baseManifold = await generateGridfinityBase(wasm, config);
@@ -460,8 +490,9 @@ function App() {
         shiftedGeometry.translate(0, 0, BASE_HEIGHT);
       }
 
+      const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
+
       try {
-        const modelMesh = geometryToManifoldMesh(shiftedGeometry, wasm);
         modelManifold = new wasm.Manifold(modelMesh);
       } catch (meshErr: unknown) {
         console.warn(
@@ -484,7 +515,7 @@ function App() {
         setCombinedGeometry(fallbackGeo);
         combinedDataRef.current = fallbackArrays;
         setError(
-          `${INVALID_STL_MESH_ERROR} Compatibility mode was used (model + base exported together as overlapping solids). Most slicers merge these automatically.`
+          'Boolean union failed on this STL, so compatibility mode was used (model + base exported together as overlapping solids). Most slicers merge these automatically.'
         );
         setToast({
           message: '⚠️ Used compatibility mode for this STL',
@@ -536,7 +567,7 @@ function App() {
       baseManifold?.delete();
       setIsProcessing(false);
     }
-  }, [originalGeometry, wasmReady, gridX, gridY, gridUnit, offsetX, offsetY, magnets, screws, placement]);
+  }, [originalGeometry, wasmReady, gridX, gridY, offsetX, offsetY, magnets, screws, placement, fitMode, activeCells]);
 
   // Download the combined STL
   const handleDownload = useCallback(() => {
@@ -546,8 +577,8 @@ function App() {
     const buffer = exportSTL(positions, indices);
 
     const baseName = filename.replace(/\.stl$/i, '');
-    downloadSTL(buffer, `${baseName}_gridfinity_${gridX}x${gridY}_${gridUnit}mm.stl`);
-  }, [filename, gridX, gridY, gridUnit]);
+    downloadSTL(buffer, `${baseName}_gridfinity_${gridX}x${gridY}.stl`);
+  }, [filename, gridX, gridY]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
@@ -598,10 +629,10 @@ function App() {
                 combinedGeometry={combinedGeometry}
                 gridX={gridX}
                 gridY={gridY}
-                gridUnit={gridUnit}
                 offsetX={offsetX}
                 offsetY={offsetY}
                 placement={placement}
+                activeCells={activeCells}
               />
             </div>
           </div>
@@ -657,7 +688,6 @@ function App() {
               gridY={gridY}
               offsetX={offsetX}
               offsetY={offsetY}
-              gridUnit={gridUnit}
               magnets={magnets}
               screws={screws}
               fitMode={fitMode}
@@ -669,11 +699,11 @@ function App() {
               hasCombined={!!combinedGeometry}
               isProcessing={isProcessing}
               filename={filename}
-              onGridXChange={setGridX}
-              onGridYChange={setGridY}
+              activeCells={activeCells}
+              onGridXChange={handleGridXChange}
+              onGridYChange={handleGridYChange}
               onOffsetXChange={setOffsetX}
               onOffsetYChange={setOffsetY}
-              onGridUnitChange={handleGridUnitChange}
               onMagnetsChange={setMagnets}
               onScrewsChange={setScrews}
               onFitModeChange={handleFitModeChange}
@@ -681,6 +711,7 @@ function App() {
               onPlacementChange={handlePlacementChange}
               onGenerate={handleGenerate}
               onDownload={handleDownload}
+              onToggleCell={handleToggleCell}
             />
 
             <div id="kofi-sidebar-widget" className="kofi-sidebar-widget" />

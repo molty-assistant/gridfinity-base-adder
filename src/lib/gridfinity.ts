@@ -18,11 +18,9 @@ import * as THREE from 'three';
  */
 
 // Gridfinity dimensions (mm)
-export const GRID_UNIT = 42; // mm per grid unit (standard)
-export const GRID_UNIT_HALF = 21; // mm per grid unit (half-grid)
-export type GridSize = 42 | 21;
-
+export const GRID_UNIT = 42; // mm per grid unit
 export const CLEARANCE = 0.25; // mm clearance from grid boundary
+export const BASE_UNIT = GRID_UNIT - 2 * CLEARANCE; // actual base size per unit
 
 // Base profile dimensions
 export const CHAMFER_SMALL = 0.8; // mm - bottom chamfer
@@ -42,7 +40,7 @@ export const MAGNET_OFFSET = 4.8; // mm from edge of unit to center of magnet
 
 // Screw hole dimensions (M3)
 export const SCREW_DIAMETER = 3.0; // mm (M3)
-export const SCREW_DEPTH = 6.0; // mm - through the full base height minus a thin floor
+export const SCREW_DEPTH = 6.0; // mm — through the full base height minus a thin floor
 
 // Fitting mode tolerance
 export const FIT_TOLERANCE = 2.0; // mm - if overhang ≤ this, round UP
@@ -52,11 +50,11 @@ export type FitMode = 'inside' | 'outside' | 'custom';
 export interface GridfinityConfig {
   gridX: number; // number of grid units in X
   gridY: number; // number of grid units in Y
-  gridUnit: GridSize; // grid unit pitch (42mm standard, 21mm half-grid)
   offsetX: number; // X offset in mm
   offsetY: number; // Y offset in mm
   magnets: boolean; // include magnet holes
   screws: boolean; // include M3 screw holes
+  activeCells?: Set<string>; // optional set of "x,y" strings for custom grid; if set, only generate for these cells
 }
 
 /**
@@ -66,25 +64,24 @@ export interface GridfinityConfig {
 export function calculateGridUnits(
   widthX: number,
   widthY: number,
-  mode: FitMode = 'inside',
-  gridUnit: GridSize = GRID_UNIT
+  mode: FitMode = 'inside'
 ): { gridX: number; gridY: number } {
   if (mode === 'outside') {
     return {
-      gridX: Math.max(1, Math.ceil(widthX / gridUnit)),
-      gridY: Math.max(1, Math.ceil(widthY / gridUnit)),
+      gridX: Math.max(1, Math.ceil(widthX / GRID_UNIT)),
+      gridY: Math.max(1, Math.ceil(widthY / GRID_UNIT)),
     };
   }
 
   // "inside" mode with tolerance
-  const rawX = widthX / gridUnit;
-  const rawY = widthY / gridUnit;
+  const rawX = widthX / GRID_UNIT;
+  const rawY = widthY / GRID_UNIT;
 
   // If overhang per side is small enough, round up
   const floorX = Math.floor(rawX);
   const floorY = Math.floor(rawY);
-  const overhangX = ((rawX - floorX) * gridUnit) / 2; // per side
-  const overhangY = ((rawY - floorY) * gridUnit) / 2;
+  const overhangX = ((rawX - floorX) * GRID_UNIT) / 2; // per side
+  const overhangY = ((rawY - floorY) * GRID_UNIT) / 2;
 
   const gridX =
     overhangX > 0 && overhangX <= FIT_TOLERANCE ? floorX + 1 : Math.max(1, floorX);
@@ -139,10 +136,8 @@ function roundedRectPoints(
  * Generate one unit base at the origin using the hull approach.
  * Hulls thin slabs at different Z heights to create clean chamfer geometry.
  */
-function generateUnitBase(wasm: ManifoldToplevel, gridUnit: GridSize): Manifold {
+function generateUnitBase(wasm: ManifoldToplevel): Manifold {
   const { CrossSection, Manifold } = wasm;
-
-  const baseUnit = gridUnit - 2 * CLEARANCE;
 
   // manifold-3d@3.3.2 exposes static helpers after wasm.setup(), including:
   // - Manifold.hull([a, b])
@@ -151,9 +146,9 @@ function generateUnitBase(wasm: ManifoldToplevel, gridUnit: GridSize): Manifold 
   // Using batch statics is also more stable than repeated chained instance ops.
 
   // Profile widths at each Z level (base widens from bottom to top)
-  const w_bottom = baseUnit - 2 * (CHAMFER_SMALL + CHAMFER_LARGE);
-  const w_mid = baseUnit - 2 * CHAMFER_LARGE;
-  const w_top = baseUnit;
+  const w_bottom = BASE_UNIT - 2 * (CHAMFER_SMALL + CHAMFER_LARGE); // ~35.6mm
+  const w_mid = BASE_UNIT - 2 * CHAMFER_LARGE; // ~37.2mm
+  const w_top = BASE_UNIT; // 41.5mm
 
   // Absolute offset corner radii (inset from outer radius)
   const totalInset_bottom = CHAMFER_SMALL + CHAMFER_LARGE; // 2.95mm
@@ -220,76 +215,83 @@ export async function generateGridfinityBase(
 
   wasm.setCircularSegments(32);
 
-  const gridUnit = config.gridUnit;
-
   // Build one template base at origin
-  const templateBase = generateUnitBase(wasm, gridUnit);
+  const templateBase = generateUnitBase(wasm);
   const unitBases: Manifold[] = [];
 
-  // At 21mm, magnet/screw holes are only placed at the 4 outer corners of the
-  // overall base (not per-cell) because per-cell holes would be too close to
-  // walls and create fragile geometry. At 42mm, per-cell placement is standard.
-  const useOuterCornersOnly = gridUnit <= 21;
+  // Track active cell positions for bridge calculation
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let hasActiveCells = false;
 
   for (let gx = 0; gx < config.gridX; gx++) {
     for (let gy = 0; gy < config.gridY; gy++) {
-      const centerX = config.offsetX + (gx - (config.gridX - 1) / 2) * gridUnit;
-      const centerY = config.offsetY + (gy - (config.gridY - 1) / 2) * gridUnit;
+      // Skip inactive cells if activeCells is specified
+      if (config.activeCells && !config.activeCells.has(`${gx},${gy}`)) {
+        continue;
+      }
+
+      const centerX = config.offsetX + (gx - (config.gridX - 1) / 2) * GRID_UNIT;
+      const centerY = config.offsetY + (gy - (config.gridY - 1) / 2) * GRID_UNIT;
+
+      // Track bounds for bridge
+      minX = Math.min(minX, centerX);
+      maxX = Math.max(maxX, centerX);
+      minY = Math.min(minY, centerY);
+      maxY = Math.max(maxY, centerY);
+      hasActiveCells = true;
 
       let unitBase = templateBase.translate([centerX, centerY, 0]);
 
-      // Per-cell magnet/screw holes (42mm standard only)
-      if (!useOuterCornersOnly) {
-        const inset = MAGNET_OFFSET;
-        const corners: [number, number][] = [
-          [centerX - gridUnit / 2 + inset, centerY - gridUnit / 2 + inset],
-          [centerX + gridUnit / 2 - inset, centerY - gridUnit / 2 + inset],
-          [centerX - gridUnit / 2 + inset, centerY + gridUnit / 2 - inset],
-          [centerX + gridUnit / 2 - inset, centerY + gridUnit / 2 - inset],
-        ];
+      // Corner positions for magnet/screw holes (same positions for both)
+      const inset = MAGNET_OFFSET;
+      const corners: [number, number][] = [
+        [centerX - GRID_UNIT / 2 + inset, centerY - GRID_UNIT / 2 + inset],
+        [centerX + GRID_UNIT / 2 - inset, centerY - GRID_UNIT / 2 + inset],
+        [centerX - GRID_UNIT / 2 + inset, centerY + GRID_UNIT / 2 - inset],
+        [centerX + GRID_UNIT / 2 - inset, centerY + GRID_UNIT / 2 - inset],
+      ];
 
-        // Add magnet holes if requested
-        if (config.magnets) {
-          const magnetRadius = MAGNET_DIAMETER / 2;
+      // Add magnet holes if requested
+      if (config.magnets) {
+        const magnetRadius = MAGNET_DIAMETER / 2;
 
-          // IMPORTANT: do a single batch difference per unit. Repeated sequential
-          // subtract/delete can yield invalid WASM handles ("indirect call to null")
-          // for multi-unit grids.
-          const holes = corners.map(([mx, my]) =>
-            Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
-              mx,
-              my,
-              0,
-            ])
-          );
-          const withHoles = Manifold.difference([unitBase, ...holes]);
-          unitBase.delete();
-          unitBase = withHoles;
-          holes.forEach((h) => h.delete());
+        // IMPORTANT: do a single batch difference per unit. Repeated sequential
+        // subtract/delete can yield invalid WASM handles (“indirect call to null”)
+        // for multi-unit grids.
+        const holes = corners.map(([mx, my]) =>
+          Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
+            mx,
+            my,
+            0,
+          ])
+        );
+        const withHoles = Manifold.difference([unitBase, ...holes]);
+        unitBase.delete();
+        unitBase = withHoles;
+        holes.forEach((h) => h.delete());
+      }
+
+      // Add screw holes if requested (concentric with magnet positions)
+      if (config.screws) {
+        const screwHoles: Manifold[] = [];
+        const screwRadius = SCREW_DIAMETER / 2;
+
+        for (const [mx, my] of corners) {
+          const hole = Manifold.cylinder(
+            SCREW_DEPTH,
+            screwRadius,
+            screwRadius,
+            16
+          ).translate([mx, my, 0]);
+          screwHoles.push(hole);
         }
 
-        // Add screw holes if requested (concentric with magnet positions)
-        if (config.screws) {
-          const screwHoles: Manifold[] = [];
-          const screwRadius = SCREW_DIAMETER / 2;
+        const withScrews = Manifold.difference([unitBase, ...screwHoles]);
+        unitBase.delete();
+        unitBase = withScrews;
 
-          for (const [mx, my] of corners) {
-            const hole = Manifold.cylinder(
-              SCREW_DEPTH,
-              screwRadius,
-              screwRadius,
-              16
-            ).translate([mx, my, 0]);
-            screwHoles.push(hole);
-          }
-
-          const withScrews = Manifold.difference([unitBase, ...screwHoles]);
-          unitBase.delete();
-          unitBase = withScrews;
-
-          for (const h of screwHoles) {
-            h.delete();
-          }
+        for (const h of screwHoles) {
+          h.delete();
         }
       }
 
@@ -300,7 +302,12 @@ export async function generateGridfinityBase(
   templateBase.delete();
 
   let profileUnion: Manifold;
-  if (unitBases.length === 1) {
+  if (unitBases.length === 0) {
+    // No active cells - create a tiny cube at far offset (effectively empty for user)
+    const tinyCube = Manifold.cube([0.001, 0.001, 0.001]);
+    templateBase.delete();
+    return tinyCube;
+  } else if (unitBases.length === 1) {
     profileUnion = unitBases[0];
   } else {
     profileUnion = Manifold.union(unitBases);
@@ -309,55 +316,35 @@ export async function generateGridfinityBase(
     }
   }
 
-  // For half-grid (21mm), place magnet/screw holes at the 4 outer corners only
-  if (useOuterCornersOnly && (config.magnets || config.screws)) {
-    const inset = MAGNET_OFFSET;
-    // Outer edges of the full grid footprint
-    const halfW = (config.gridX * gridUnit) / 2;
-    const halfD = (config.gridY * gridUnit) / 2;
-    const outerCorners: [number, number][] = [
-      [config.offsetX - halfW + inset, config.offsetY - halfD + inset],
-      [config.offsetX + halfW - inset, config.offsetY - halfD + inset],
-      [config.offsetX - halfW + inset, config.offsetY + halfD - inset],
-      [config.offsetX + halfW - inset, config.offsetY + halfD - inset],
-    ];
+  // Generate the bridge platform
+  // If activeCells is specified, bridge only the active cells' bounding box
+  let bridgeWidth: number;
+  let bridgeDepth: number;
+  let bridgeOffsetX: number;
+  let bridgeOffsetY: number;
 
-    if (config.magnets) {
-      const magnetRadius = MAGNET_DIAMETER / 2;
-      const holes = outerCorners.map(([mx, my]) =>
-        Manifold.cylinder(MAGNET_DEPTH, magnetRadius, magnetRadius, 24, false).translate([
-          mx, my, 0,
-        ])
-      );
-      const withHoles = Manifold.difference([profileUnion, ...holes]);
-      profileUnion.delete();
-      profileUnion = withHoles;
-      holes.forEach((h) => h.delete());
-    }
-
-    if (config.screws) {
-      const screwRadius = SCREW_DIAMETER / 2;
-      const screwHoles = outerCorners.map(([mx, my]) =>
-        Manifold.cylinder(SCREW_DEPTH, screwRadius, screwRadius, 16).translate([
-          mx, my, 0,
-        ])
-      );
-      const withScrews = Manifold.difference([profileUnion, ...screwHoles]);
-      profileUnion.delete();
-      profileUnion = withScrews;
-      screwHoles.forEach((h) => h.delete());
-    }
+  if (config.activeCells && hasActiveCells) {
+    // Bridge spans the bounding box of active cells
+    const cellSpanX = maxX - minX + GRID_UNIT;
+    const cellSpanY = maxY - minY + GRID_UNIT;
+    bridgeWidth = cellSpanX - 2 * CLEARANCE;
+    bridgeDepth = cellSpanY - 2 * CLEARANCE;
+    bridgeOffsetX = (minX + maxX) / 2;
+    bridgeOffsetY = (minY + maxY) / 2;
+  } else {
+    // Bridge spans the full grid
+    bridgeWidth = config.gridX * GRID_UNIT - 2 * CLEARANCE;
+    bridgeDepth = config.gridY * GRID_UNIT - 2 * CLEARANCE;
+    bridgeOffsetX = config.offsetX;
+    bridgeOffsetY = config.offsetY;
   }
 
-  // Generate the bridge platform that spans the full multi-unit footprint
-  const bridgeWidth = config.gridX * gridUnit - 2 * CLEARANCE;
-  const bridgeDepth = config.gridY * gridUnit - 2 * CLEARANCE;
   const { CrossSection } = wasm;
   const bridgeCS = new CrossSection([
     roundedRectPoints(bridgeWidth, bridgeDepth, CORNER_RADIUS),
   ]);
   const bridgeSlab = bridgeCS.extrude(BRIDGE_HEIGHT).translate(
-    [config.offsetX, config.offsetY, PROFILE_HEIGHT]
+    [bridgeOffsetX, bridgeOffsetY, PROFILE_HEIGHT]
   );
   bridgeCS.delete();
 

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import CollapsibleSection from './CollapsibleSection';
-import type { FitMode, GridSize } from '../lib/gridfinity';
-import { GRID_UNIT, GRID_UNIT_HALF, BASE_HEIGHT } from '../lib/gridfinity';
+import GridSelector from './GridSelector';
+import type { FitMode } from '../lib/gridfinity';
+import { GRID_UNIT, BASE_HEIGHT } from '../lib/gridfinity';
 
 export type OrientationAxis = '+z' | '-z' | '+x' | '-x' | '+y' | '-y';
 export type BasePlacement = 'outside' | 'inside';
@@ -11,7 +12,6 @@ interface ControlsProps {
   gridY: number;
   offsetX: number;
   offsetY: number;
-  gridUnit: GridSize;
   magnets: boolean;
   screws: boolean;
   fitMode: FitMode;
@@ -23,11 +23,11 @@ interface ControlsProps {
   hasCombined: boolean;
   isProcessing: boolean;
   filename: string;
+  activeCells: Set<string>;
   onGridXChange: (v: number) => void;
   onGridYChange: (v: number) => void;
   onOffsetXChange: (v: number) => void;
   onOffsetYChange: (v: number) => void;
-  onGridUnitChange: (v: GridSize) => void;
   onMagnetsChange: (v: boolean) => void;
   onScrewsChange: (v: boolean) => void;
   onFitModeChange: (v: FitMode) => void;
@@ -35,6 +35,7 @@ interface ControlsProps {
   onPlacementChange: (v: BasePlacement) => void;
   onGenerate: () => void;
   onDownload: () => void;
+  onToggleCell: (x: number, y: number) => void;
 }
 
 const fitModeLabels: Record<FitMode, { label: string; desc: string }> = {
@@ -68,7 +69,6 @@ export default function Controls({
   gridY,
   offsetX,
   offsetY,
-  gridUnit,
   magnets,
   screws,
   fitMode,
@@ -79,11 +79,11 @@ export default function Controls({
   hasCombined,
   isProcessing,
   filename,
+  activeCells,
   onGridXChange,
   onGridYChange,
   onOffsetXChange,
   onOffsetYChange,
-  onGridUnitChange,
   onMagnetsChange,
   onScrewsChange,
   onFitModeChange,
@@ -91,6 +91,7 @@ export default function Controls({
   onPlacementChange,
   onGenerate,
   onDownload,
+  onToggleCell,
 }: ControlsProps) {
   const [settingsCopied, setSettingsCopied] = useState(false);
 
@@ -98,9 +99,7 @@ export default function Controls({
     const text = [
       `Gridfinity Base Adder Settings`,
       `File: ${filename}`,
-      `Grid Unit: ${gridUnit}mm`,
-      `Grid: ${gridX}×${gridY} (${(gridX * gridUnit).toFixed(0)}×${(gridY * gridUnit).toFixed(0)}mm)`,
-      gridUnit === GRID_UNIT_HALF && (magnets || screws) ? `Note: Holes placed at outer corners only at 21mm grid size` : '',
+      `Grid: ${gridX}×${gridY} (${(gridX * GRID_UNIT).toFixed(0)}×${(gridY * GRID_UNIT).toFixed(0)}mm)`,
       `Fit Mode: ${fitModeLabels[fitMode].label}`,
       `Orientation: ${orientation}`,
       `Base Side: ${placementLabels[placement].label}`,
@@ -229,43 +228,6 @@ export default function Controls({
       {/* Grid & Size — open by default */}
       <CollapsibleSection title="Grid Size" defaultOpen={true} badge={hasModel ? `${gridX}×${gridY}` : undefined}>
         <div className="space-y-3">
-          {/* Grid Unit Size */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2">
-              Grid Unit Size
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => onGridUnitChange(GRID_UNIT)}
-                disabled={isProcessing}
-                className={`
-                  py-2 px-2 rounded-lg text-xs font-medium transition-all
-                  ${gridUnit === GRID_UNIT
-                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-300'
-                    : 'bg-gray-800/50 border border-gray-700/50 text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
-                  }
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                `}
-              >
-                42mm Standard
-              </button>
-              <button
-                onClick={() => onGridUnitChange(GRID_UNIT_HALF)}
-                disabled={isProcessing}
-                className={`
-                  py-2 px-2 rounded-lg text-xs font-medium transition-all
-                  ${gridUnit === GRID_UNIT_HALF
-                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-300'
-                    : 'bg-gray-800/50 border border-gray-700/50 text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
-                  }
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                `}
-              >
-                21mm Half
-              </button>
-            </div>
-          </div>
-
           {/* Fitting Mode */}
           {hasModel && (
             <div>
@@ -330,8 +292,21 @@ export default function Controls({
           </div>
 
           <div className="text-xs text-gray-500">
-            Base: {(gridX * gridUnit).toFixed(0)} × {(gridY * gridUnit).toFixed(0)} mm · Height: {BASE_HEIGHT.toFixed(1)} mm
+            Base: {(gridX * 42).toFixed(0)} × {(gridY * 42).toFixed(0)} mm · Height: {BASE_HEIGHT.toFixed(1)} mm
           </div>
+
+          {/* Grid Selector - only show in custom mode */}
+          {hasModel && fitMode === 'custom' && (
+            <div className="pt-3 border-t border-gray-800">
+              <GridSelector
+                gridX={gridX}
+                gridY={gridY}
+                activeCells={activeCells}
+                onToggleCell={onToggleCell}
+                disabled={isProcessing}
+              />
+            </div>
+          )}
         </div>
       </CollapsibleSection>
 
@@ -379,8 +354,8 @@ export default function Controls({
             </label>
             <input
               type="range"
-              min={-gridUnit / 2}
-              max={gridUnit / 2}
+              min={-21}
+              max={21}
               step={0.5}
               value={offsetX}
               onChange={(e) => onOffsetXChange(parseFloat(e.target.value))}
@@ -396,8 +371,8 @@ export default function Controls({
             </label>
             <input
               type="range"
-              min={-gridUnit / 2}
-              max={gridUnit / 2}
+              min={-21}
+              max={21}
               step={0.5}
               value={offsetY}
               onChange={(e) => onOffsetYChange(parseFloat(e.target.value))}
@@ -423,12 +398,6 @@ export default function Controls({
                 <div className="text-[10px] text-gray-600">6×3mm round magnets</div>
               </div>
             </label>
-
-            {(magnets || screws) && gridUnit === GRID_UNIT_HALF && (
-              <div className="px-2.5 -mt-1 text-[10px] text-yellow-400/70">
-                Holes placed at outer corners only at 21mm grid size.
-              </div>
-            )}
 
             <label className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800/50 transition-colors cursor-pointer">
               <input
@@ -468,7 +437,7 @@ export default function Controls({
             </div>
           </div>
           <div className="text-center text-gray-600 text-[10px] pt-1">
-            Grid unit: {gridUnit}mm · All processing runs in your browser
+            Grid unit: {GRID_UNIT}mm · All processing runs in your browser
           </div>
         </div>
       )}
