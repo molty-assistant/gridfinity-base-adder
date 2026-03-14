@@ -229,7 +229,8 @@ export default function LandingPage({ children, wasmReady, appVersion }: Landing
             <a href="#tool" className="hover:text-gray-200 transition-colors">Launch Tool</a>
             <a href="#features" className="hover:text-gray-200 transition-colors">Features</a>
             <a href="#faq" className="hover:text-gray-200 transition-colors">FAQ</a>
-            <a href="/gridfinity-base-adder/sitemap.xml" className="hover:text-gray-200 transition-colors">Sitemap</a>
+            <a href="sitemap.xml" className="hover:text-gray-200 transition-colors">Sitemap</a>
+            <a href="robots.txt" className="hover:text-gray-200 transition-colors">Robots</a>
             <a
               href="https://github.com/kennetek/gridfinity-rebuilt-openscad"
               className="hover:text-gray-200 transition-colors"
