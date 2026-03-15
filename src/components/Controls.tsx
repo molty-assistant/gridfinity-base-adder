@@ -36,6 +36,7 @@ interface ControlsProps {
   onGenerate: () => void;
   onDownload: () => void;
   onToggleCell: (x: number, y: number) => void;
+  onCopyShareLink: () => void;
 }
 
 const fitModeLabels: Record<FitMode, { label: string; desc: string }> = {
@@ -92,8 +93,16 @@ export default function Controls({
   onGenerate,
   onDownload,
   onToggleCell,
+  onCopyShareLink,
 }: ControlsProps) {
   const [settingsCopied, setSettingsCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleCopyShareLink = () => {
+    onCopyShareLink();
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
 
   const copySettings = () => {
     const text = [
@@ -151,6 +160,31 @@ export default function Controls({
         </p>
       )}
 
+      {/* Share link — always visible so users can share at any point */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleCopyShareLink}
+          title="Copy a shareable URL with current settings"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 transition-colors"
+        >
+          {linkCopied ? (
+            <>
+              <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              <span className="text-emerald-400">Link copied!</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+              </svg>
+              Copy share link
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Placement choice should always be visible */}
       {hasModel && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3">
@@ -201,26 +235,49 @@ export default function Controls({
 
           <div className="flex items-center justify-between text-xs text-emerald-400/70">
             <span>{gridX}×{gridY} grid · {magnets ? 'magnets' : ''}{magnets && screws ? ' + ' : ''}{screws ? 'screws' : ''}{!magnets && !screws ? 'no features' : ''}</span>
-            <button
-              onClick={copySettings}
-              className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-emerald-800/30 transition-colors"
-            >
-              {settingsCopied ? (
-                <>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                  </svg>
-                  Copy settings
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleCopyShareLink}
+                title="Copy a shareable link with these settings"
+                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-emerald-800/30 transition-colors"
+              >
+                {linkCopied ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    Linked!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                    </svg>
+                    Share
+                  </>
+                )}
+              </button>
+              <button
+                onClick={copySettings}
+                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-emerald-800/30 transition-colors"
+              >
+                {settingsCopied ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                    </svg>
+                    Copy settings
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

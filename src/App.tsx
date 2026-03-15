@@ -18,6 +18,13 @@ import {
   BASE_HEIGHT,
 } from './lib/gridfinity';
 import type { FitMode } from './lib/gridfinity';
+import {
+  hasShareParams,
+  decodeShareParams,
+  encodeShareParams,
+  buildShareUrl,
+} from './lib/shareUrl';
+import type { ShareableConfig } from './lib/shareUrl';
 
 interface ModelDims {
   width: number;
@@ -119,6 +126,17 @@ function getOrientationMatrix(axis: OrientationAxis): THREE.Matrix4 {
 function App() {
   const rawGeometryRef = useRef<THREE.BufferGeometry | null>(null);
 
+  // Parse URL share params once on mount (before any other state init)
+  const [urlInit] = useState<{ config: Partial<ShareableConfig> | null; error: boolean }>(() => {
+    if (!hasShareParams(window.location.search)) return { config: null, error: false };
+    try {
+      return { config: decodeShareParams(window.location.search), error: false };
+    } catch {
+      return { config: null, error: true };
+    }
+  });
+  const u = urlInit.config;
+
   const [originalGeometry, setOriginalGeometry] =
     useState<THREE.BufferGeometry | null>(null);
   const [baseGeometry, setBaseGeometry] =
@@ -129,16 +147,16 @@ function App() {
   const [filename, setFilename] = useState<string>('');
   const [triangleCount, setTriangleCount] = useState(0);
 
-  const [gridX, setGridX] = useState(1);
-  const [gridY, setGridY] = useState(1);
-  const [offsetX, setOffsetX] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
-  const [magnets, setMagnets] = useState(true);
-  const [screws, setScrews] = useState(false);
-  const [activeCells, setActiveCells] = useState<Set<string>>(new Set());
-  const [fitMode, setFitMode] = useState<FitMode>('inside');
-  const [orientation, setOrientation] = useState<OrientationAxis>('-z');
-  const [placement, setPlacement] = useState<BasePlacement>('outside');
+  const [gridX, setGridX] = useState(u?.gridX ?? 1);
+  const [gridY, setGridY] = useState(u?.gridY ?? 1);
+  const [offsetX, setOffsetX] = useState(u?.offsetX ?? 0);
+  const [offsetY, setOffsetY] = useState(u?.offsetY ?? 0);
+  const [magnets, setMagnets] = useState(u?.magnets ?? true);
+  const [screws, setScrews] = useState(u?.screws ?? false);
+  const [activeCells, setActiveCells] = useState<Set<string>>(u?.activeCells ?? new Set());
+  const [fitMode, setFitMode] = useState<FitMode>(u?.fitMode ?? 'inside');
+  const [orientation, setOrientation] = useState<OrientationAxis>(u?.orientation ?? '-z');
+  const [placement, setPlacement] = useState<BasePlacement>(u?.placement ?? 'outside');
   const [isProcessing, setIsProcessing] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +176,25 @@ function App() {
         setError('Failed to initialize 3D engine. Please refresh the page.');
       });
   }, []);
+
+  // Show toast if URL params were present on load
+  useEffect(() => {
+    if (urlInit.error) {
+      setToast({ message: '⚠️ Could not read share link — using defaults.', type: 'info' });
+    } else if (urlInit.config) {
+      setToast({ message: '🔗 Settings loaded from share link.', type: 'info' });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Silently update URL whenever settings change
+  useEffect(() => {
+    const config: ShareableConfig = {
+      gridX, gridY, offsetX, offsetY, fitMode, magnets, screws, orientation, placement, activeCells,
+    };
+    const params = encodeShareParams(config);
+    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+  }, [gridX, gridY, offsetX, offsetY, fitMode, magnets, screws, orientation, placement, activeCells]);
 
   // Ko-fi floating widget
   useEffect(() => {
@@ -434,6 +471,18 @@ function App() {
     combinedDataRef.current = null;
   }, []);
 
+  const handleCopyShareLink = useCallback(() => {
+    const config: ShareableConfig = {
+      gridX, gridY, offsetX, offsetY, fitMode, magnets, screws, orientation, placement, activeCells,
+    };
+    const url = buildShareUrl(config);
+    navigator.clipboard.writeText(url).then(() => {
+      setToast({ message: '🔗 Share link copied to clipboard!', type: 'success' });
+    }).catch(() => {
+      setToast({ message: '❌ Failed to copy link to clipboard.', type: 'error' });
+    });
+  }, [gridX, gridY, offsetX, offsetY, fitMode, magnets, screws, orientation, placement, activeCells]);
+
   // Generate the base and union it with the model
   const handleGenerate = useCallback(async () => {
     if (!originalGeometry || !wasmReady) return;
@@ -690,6 +739,7 @@ function App() {
                 onGenerate={handleGenerate}
                 onDownload={handleDownload}
                 onToggleCell={handleToggleCell}
+                onCopyShareLink={handleCopyShareLink}
               />
 
               <div id="kofi-sidebar-widget" className="kofi-sidebar-widget" />
