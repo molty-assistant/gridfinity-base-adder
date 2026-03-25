@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import JSZip from 'jszip';
 
 /**
  * Parse an STL file (binary or ASCII) and return a BufferGeometry
@@ -151,6 +152,121 @@ export function exportSTL(
   }
 
   return buffer;
+}
+
+/**
+ * Export mesh data to 3MF format and trigger download
+ */
+export async function export3MF(
+  positions: Float32Array,
+  indices: Uint32Array,
+  filename: string
+): Promise<void> {
+  const numVertices = positions.length / 3;
+  const numTriangles = indices.length / 3;
+
+  // Build vertices XML
+  let verticesXml = '';
+  for (let i = 0; i < numVertices; i++) {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    verticesXml += `        <vertex x="${x}" y="${y}" z="${z}"/>\n`;
+  }
+
+  // Build triangles XML
+  let trianglesXml = '';
+  for (let t = 0; t < numTriangles; t++) {
+    const v1 = indices[t * 3];
+    const v2 = indices[t * 3 + 1];
+    const v3 = indices[t * 3 + 2];
+    trianglesXml += `        <triangle v1="${v1}" v2="${v2}" v3="${v3}"/>\n`;
+  }
+
+  const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+${verticesXml.trimEnd()}
+        </vertices>
+        <triangles>
+${trianglesXml.trimEnd()}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1"/>
+  </build>
+</model>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>`;
+
+  const relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3Dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`;
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypesXml);
+  zip.folder('_rels')!.file('.rels', relsXml);
+  zip.folder('3D')!.file('3Dmodel.model', modelXml);
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Parse a 3MF file and return raw mesh data
+ */
+export async function parse3MF(
+  buffer: ArrayBuffer
+): Promise<{ positions: Float32Array; indices: Uint32Array }> {
+  const zip = await JSZip.loadAsync(buffer);
+
+  const modelFile = zip.file('3D/3Dmodel.model');
+  if (!modelFile) {
+    throw new Error('Invalid 3MF: missing 3D/3Dmodel.model');
+  }
+
+  const modelText = await modelFile.async('text');
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(modelText, 'application/xml');
+
+  const parserError = doc.querySelector('parsererror');
+  if (parserError) {
+    throw new Error('Invalid 3MF: malformed XML');
+  }
+
+  const vertexEls = doc.querySelectorAll('mesh > vertices > vertex');
+  const triangleEls = doc.querySelectorAll('mesh > triangles > triangle');
+
+  const positions = new Float32Array(vertexEls.length * 3);
+  for (let i = 0; i < vertexEls.length; i++) {
+    positions[i * 3] = parseFloat(vertexEls[i].getAttribute('x') ?? '0');
+    positions[i * 3 + 1] = parseFloat(vertexEls[i].getAttribute('y') ?? '0');
+    positions[i * 3 + 2] = parseFloat(vertexEls[i].getAttribute('z') ?? '0');
+  }
+
+  const indices = new Uint32Array(triangleEls.length * 3);
+  for (let t = 0; t < triangleEls.length; t++) {
+    indices[t * 3] = parseInt(triangleEls[t].getAttribute('v1') ?? '0', 10);
+    indices[t * 3 + 1] = parseInt(triangleEls[t].getAttribute('v2') ?? '0', 10);
+    indices[t * 3 + 2] = parseInt(triangleEls[t].getAttribute('v3') ?? '0', 10);
+  }
+
+  return { positions, indices };
 }
 
 /**

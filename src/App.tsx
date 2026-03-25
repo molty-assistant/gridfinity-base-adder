@@ -8,7 +8,7 @@ import Controls from './components/Controls';
 import Toast from './components/Toast';
 import LandingPage from './components/LandingPage';
 import type { BasePlacement, OrientationAxis } from './components/Controls';
-import { parseSTL, getModelDimensions, exportSTL, downloadSTL } from './lib/stl';
+import { parseSTL, getModelDimensions, exportSTL, downloadSTL, parse3MF, export3MF } from './lib/stl';
 import { initManifold } from './lib/manifold';
 import {
   calculateGridUnits,
@@ -277,13 +277,23 @@ function App() {
 
   // Handle STL file upload
   const handleFileLoaded = useCallback(
-    (buffer: ArrayBuffer, name: string) => {
+    async (buffer: ArrayBuffer, name: string) => {
       setError(null);
       try {
         // Dispose previous uploaded geometry to avoid GPU memory leaks.
         if (rawGeometryRef.current) rawGeometryRef.current.dispose();
 
-        const rawGeo = parseSTL(buffer);
+        let rawGeo: THREE.BufferGeometry;
+        if (name.toLowerCase().endsWith('.3mf')) {
+          const { positions, indices } = await parse3MF(buffer);
+          rawGeo = new THREE.BufferGeometry();
+          rawGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          rawGeo.setIndex(new THREE.BufferAttribute(indices, 1));
+          rawGeo.computeBoundingBox();
+          rawGeo.computeVertexNormals();
+        } else {
+          rawGeo = parseSTL(buffer);
+        }
         rawGeometryRef.current = rawGeo;
 
         // Count triangles
@@ -320,8 +330,8 @@ function App() {
         setOffsetX(0);
         setOffsetY(0);
       } catch (err: unknown) {
-        console.error('Failed to parse STL:', err);
-        setError(`Failed to parse STL file: ${getErrorMessage(err)}`);
+        console.error('Failed to parse file:', err);
+        setError(`Failed to parse file: ${getErrorMessage(err)}`);
       }
     },
     [applyOrientation, orientation, fitMode]
@@ -630,6 +640,15 @@ function App() {
     downloadSTL(buffer, `${baseName}_gridfinity_${gridX}x${gridY}.stl`);
   }, [filename, gridX, gridY]);
 
+  // Download the combined 3MF
+  const handleDownload3MF = useCallback(() => {
+    if (!combinedDataRef.current) return;
+
+    const { positions, indices } = combinedDataRef.current;
+    const baseName = filename.replace(/\.[^.]+$/i, '');
+    export3MF(positions, indices, `${baseName}_gridfinity_${gridX}x${gridY}.3mf`);
+  }, [filename, gridX, gridY]);
+
   return (
     <LandingPage wasmReady={wasmReady} appVersion={__APP_VERSION__}>
       {/* Toast notifications */}
@@ -738,6 +757,7 @@ function App() {
                 onPlacementChange={handlePlacementChange}
                 onGenerate={handleGenerate}
                 onDownload={handleDownload}
+                onDownload3MF={handleDownload3MF}
                 onToggleCell={handleToggleCell}
                 onCopyShareLink={handleCopyShareLink}
               />

@@ -16,8 +16,9 @@ export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) 
 
   const handleFile = useCallback(
     (file: File) => {
-      if (!file.name.toLowerCase().endsWith('.stl')) {
-        alert('Please upload an STL file.');
+      const nameLower = file.name.toLowerCase();
+      if (!nameLower.endsWith('.stl') && !nameLower.endsWith('.3mf')) {
+        alert('Please upload an STL or 3MF file.');
         return;
       }
 
@@ -28,7 +29,7 @@ export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) 
 
       if (file.size > WARN_FILE_SIZE_BYTES) {
         const proceed = window.confirm(
-          `This STL is ${(file.size / 1024 / 1024).toFixed(1)}MB. Large files can be slow in-browser. Continue?`
+          `This file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Large files can be slow in-browser. Continue?`
         );
         if (!proceed) return;
       }
@@ -102,7 +103,7 @@ export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) 
       <input
         ref={inputRef}
         type="file"
-        accept=".stl"
+        accept=".stl,.3mf"
         onChange={handleChange}
         className="hidden"
       />
@@ -121,7 +122,7 @@ export default function FileUpload({ onFileLoaded, disabled }: FileUploadProps) 
           />
         </svg>
         <span className="text-sm font-medium">
-          Drop STL file here or click to upload
+          Drop STL or 3MF file here or click to upload
         </span>
       </div>
     </div>

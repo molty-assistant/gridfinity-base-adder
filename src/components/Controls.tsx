@@ -35,6 +35,7 @@ interface ControlsProps {
   onPlacementChange: (v: BasePlacement) => void;
   onGenerate: () => void;
   onDownload: () => void;
+  onDownload3MF: () => void;
   onToggleCell: (x: number, y: number) => void;
   onCopyShareLink: () => void;
 }
@@ -92,6 +93,7 @@ export default function Controls({
   onPlacementChange,
   onGenerate,
   onDownload,
+  onDownload3MF,
   onToggleCell,
   onCopyShareLink,
 }: ControlsProps) {
@@ -219,19 +221,34 @@ export default function Controls({
       {/* Download section — prominent when available */}
       {hasCombined && (
         <div className="bg-emerald-950/30 border border-emerald-700/40 rounded-xl p-3 space-y-2.5">
-          <button
-            onClick={onDownload}
-            disabled={isProcessing}
-            className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm transition-all
-              bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20
-              disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
-              flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            Download STL
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onDownload}
+              disabled={isProcessing}
+              className="flex-1 py-3.5 px-4 rounded-xl font-semibold text-sm transition-all
+                bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20
+                disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
+                flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download STL
+            </button>
+            <button
+              onClick={onDownload3MF}
+              disabled={isProcessing}
+              className="flex-1 py-3.5 px-4 rounded-xl font-semibold text-sm transition-all
+                bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white shadow-lg shadow-emerald-700/20
+                disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed
+                flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download 3MF
+            </button>
+          </div>
 
           <div className="flex items-center justify-between text-xs text-emerald-400/70">
             <span>{gridX}×{gridY} grid · {magnets ? 'magnets' : ''}{magnets && screws ? ' + ' : ''}{screws ? 'screws' : ''}{!magnets && !screws ? 'no features' : ''}</span>
